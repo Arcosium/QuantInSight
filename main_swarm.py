@@ -58,7 +58,7 @@ SCHEDULE = {
     "kr_after_market": {"start":(15,50),"end":(20,0),  "desc":"NXT 애프터마켓"},
     "us_trading":      {"start":(22,30),"end":(5,0),   "desc":"US 장중 (야간)"},
 }
-NEWS_CHECK_INTERVAL = 900     # 뉴스 크롤링 주기 15분 (사장 피드백 2026-05-16)
+NEWS_CHECK_INTERVAL = 900     # 뉴스 반영(파일 읽기) 주기 15분 — 실제 크롤은 news-collector.timer 5분 (2026-09-14)
 # 사장 피드백 2026-05-16: 뉴스 크롤링·분류는 유저별이 아니라 **단일 스왐 프로세스에서
 # 한 번만 수행된다(get_monitor()는 프로세스 전역 싱글턴).
 # 결과는 data/news_history.json 에 영속되고 /api/news 가 전체 유저에게 동일하게 제공 →
@@ -4545,7 +4545,8 @@ class ArquantOrchestrator(_OpsRouterMixin, _MarketCalendarMixin, _ExecutionMixin
                 # crawl + accumulate news into the single pool (dedup near-identical headlines).
                 # 사장 지시 2026-06-04: KR/US 시장 분기·미러링·LLM 시장분류 폐지 — 모든 뉴스를 한 풀에 쌓고
                 # 마켓센티먼트팀장이 사이클에서 직접 시장을 구분한다(market 필드 미사용).
-                new_articles = self.news_monitor.crawl_once()
+                # 2026-09-14: 크롤은 독립 수집기(news-collector.timer)가 한다 — 여기선 결과만 읽는다.
+                new_articles = self.news_monitor.pull_from_disk()
                 if new_articles:
                     existing = [a.get("title", "") for a in self._pending_news]
                     added = []
