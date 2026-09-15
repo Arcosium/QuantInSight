@@ -179,3 +179,5 @@ backups/
 # APK 산출물 — 배포는 Google Drive(gdrive:apk/), git 에는 미포함 (63MB 바이너리)
 /QuantInSight.apk
 /data
+/.code-review-graph
+/backups
