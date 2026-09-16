@@ -18,3 +18,5 @@ python-multipart==0.0.27
 requests==2.32.5
 starlette==1.0.0
 uvicorn==0.46.0
+
+PyJWT[crypto]>=2.10,<3

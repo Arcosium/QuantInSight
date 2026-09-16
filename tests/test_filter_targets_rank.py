@@ -1,5 +1,5 @@
 """사장 지시 2026-06-04: ① 퀀트 점수가 선정에 영향 — 미달 제거 + 점수 내림차순 + 최대 종목수 캡.
-점수 없는 종목 보존(주문 스킵 금지). 루브릭 블록은 PASS1 선정에 채점 기준 주입."""
+점수 없는 종목은 매수 보류. 루브릭 블록은 PASS1 선정에 채점 기준 주입."""
 from main_swarm import filter_targets_by_score, format_scoring_rubric_block
 
 
@@ -16,10 +16,9 @@ def test_caps_to_max_names_keeping_top():
     assert set(dropped) == {"A", "C"}  # 캡 초과분도 dropped 에 보고
 
 
-def test_missing_score_preserved_first():
-    # 점수 없는 종목은 평가불가 → 보존(드롭 금지). 정렬에서 맨 앞(우선 자금배정 안전).
+def test_missing_score_is_rejected():
     kept, dropped = filter_targets_by_score(["A", "X"], {"A": 7}, 6, max_names=8)
-    assert "X" in kept and "A" in kept and dropped == []
+    assert kept == ["A"] and dropped == ["X"]
 
 
 def test_max_names_zero_means_no_cap():

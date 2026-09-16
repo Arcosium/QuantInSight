@@ -1,13 +1,4 @@
-"""대체 후보(ENABLE_CHEAP_FALLBACK) 발동 조건 — 사장 지시 2026-06-03.
-
-버그(2026-06-03 cycle 118, 실거래 hh09080): 사후관리실장이 NU 매도 후 트레이더(주식운용실장)가
-'최종종목 없음'으로 매수 보류했는데도, 대체 후보 폴백이 트레이더가 퀀트 4.2점·약세로 배제한
-SCHW 를 후보군 최저가로 무단 매수 → 매도 직후 더 나쁜 종목 재매수(처닝).
-
-근본 원인: 폴백 발동 조건이 `not affordable_buy_found` 뿐이라 '지정했으나 예산초과로 못 산' 경우와
-'트레이더가 의도적으로 안 산(target_codes 비어있음)' 경우를 구분하지 못했다.
-수정: target_set 가 비어 있으면(의도적 매수 보류) 폴백을 발동하지 않는다.
-"""
+"""Final committee choices cannot be replaced by unreviewed cheap names."""
 import asyncio
 
 import pytest
@@ -73,19 +64,18 @@ def test_no_buy_when_trader_picks_nothing():
         holdings=[], sell_directives={}))
     buys = [o for o in obj["orders"] if o.get("side") == "buy"]
     assert buys == [], "트레이더가 최종종목 없음으로 보류했으면 후보 최저가를 무단 매수하면 안 된다"
-    assert any("의도적 매수 보류" in n for n in obj["sizing_notes"])
 
 
-def test_fallback_still_fires_when_designated_target_unaffordable():
-    # 트레이더가 지정은 했으나(005930) 1주조차 예수금 초과로 못 삼 → 후보군 최저가(000660) 대체는 유지.
-    # (실거래에선 ENABLE_CHEAP_FALLBACK override=false 로 꺼두지만, 코드 로직 자체는 보존됨)
+
+def test_cash_is_retained_when_designated_target_unaffordable():
+    # Even a stale override cannot substitute an unreviewed cheap stock.
     b = _StubBroker({"005930": 15_000_000.0, "000660": 200_000.0})
     obj, _px, _bp = asyncio.run(_orch(b)._build_orders(
         target_codes=["005930"], candidate_codes=["000660"], quant_report="", news_report="",
         holdings=[], sell_directives={}))
     buys = [o for o in obj["orders"] if o.get("side") == "buy"]
-    assert len(buys) == 1 and buys[0]["ticker"] == "000660", "지정종목 예산초과 시 대체 후보 폴백은 유지돼야 한다"
-    assert any("대체 후보" in n for n in obj["sizing_notes"])
+    assert buys == []
+    assert any("현금을 유지" in n for n in obj["sizing_notes"])
 
 
 def test_two_targets_both_bought_with_split_budget():

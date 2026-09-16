@@ -2,7 +2,7 @@
 spec: docs/superpowers/specs/2026-06-04-strategy-param-expansion-design.md
 
 검증:
-  - MIN_QUANT_SCORE 결정론 게이트: 점수 미달 target 제거(미달만), 점수 없는 target 은 보존(드롭 금지).
+  - MIN_QUANT_SCORE 결정론 게이트: 점수 미달 target 제거(미달만), 점수 없는 target 은 제외.
   - 계량분석팀장 호출 프롬프트용 전략 파라미터 블록: 정규화 가중치 + 활성 필터만 표기.
 """
 from main_swarm import filter_targets_by_score, format_strategy_param_block
@@ -19,12 +19,9 @@ def test_filter_min_zero_keeps_all():
     assert kept == ["A", "B"] and dropped == []
 
 
-def test_filter_missing_score_is_kept_not_dropped():
-    # 점수 매핑에 없는 종목은 '평가불가'이므로 보존한다(LLM이 고른 주문을 조용히 드롭 금지).
-    # 2026-06-04 ① 랭크-인지 도입: 미점수 종목은 +inf 로 보고 정렬 맨 앞(우선 자금배정 안전). 순서가 아닌
-    # '보존·무드롭'이 이 테스트의 의도이므로 멤버십으로 단정.
+def test_filter_missing_score_is_rejected():
     kept, dropped = filter_targets_by_score(["A", "D"], {"A": 7}, 6)
-    assert set(kept) == {"A", "D"} and dropped == []
+    assert kept == ["A"] and dropped == ["D"]
 
 
 def test_filter_boundary_equal_is_kept():

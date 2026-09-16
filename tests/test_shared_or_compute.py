@@ -1,4 +1,4 @@
-"""ADMIN=게시 / 소비자=대기-수신·폴백 / SHARE off=항상 자체계산."""
+"""Running producer publishes; consumers reuse or compute after bounded waiting."""
 import asyncio
 from datetime import datetime, timezone, timedelta
 import main_swarm
@@ -11,6 +11,10 @@ class _StubRuntime:
     def get(self, k, default=None, uid=None): return self._p.get(k, default)
 
 def _setup(monkeypatch, *, share=True, wait=0.05):
+    from types import SimpleNamespace as N
+    from infra.user_context import REGISTRY
+    monkeypatch.setattr(REGISTRY, "all_contexts", lambda: {
+        1: N(task=N(done=lambda: False)), 2: N(task=N(done=lambda: False))})
     monkeypatch.setattr(main_swarm, "_now_kst",
                         lambda: datetime(2026, 6, 8, 10, 5, 0, tzinfo=KST))
     monkeypatch.setattr(main_swarm, "runtime", _StubRuntime(
@@ -111,3 +115,29 @@ def test_slow_producer_does_not_latch(monkeypatch):
     o = _orch(False); calls, compute = _counter()
     assert asyncio.run(o._shared_or_compute("macro_report", None, compute)) == "COMPUTED"
     assert o._producer_absent_this_cycle is False
+
+
+def test_paper_profile_computes_immediately_when_real_is_stopped(monkeypatch):
+    from types import SimpleNamespace as N
+    from unittest.mock import AsyncMock
+    from infra.user_context import REGISTRY
+    store = _setup(monkeypatch)
+    monkeypatch.setattr(REGISTRY, "all_contexts", lambda: {
+        1: N(task=None), 2: N(task=N(done=lambda: False))})
+    wait = AsyncMock(side_effect=AssertionError("must not wait for stopped real account"))
+    monkeypatch.setattr(store, "wait_for", wait)
+    o = _orch(False)
+    calls, compute = _counter()
+    assert asyncio.run(o._shared_or_compute("news_report", None, compute)) == "COMPUTED"
+    assert calls["n"] == 1
+    assert store.peek("news_report", "2026-06-08 10", None) == "COMPUTED"
+    wait.assert_not_called()
+
+
+def test_completed_task_cannot_remain_the_producer(monkeypatch):
+    from types import SimpleNamespace as N
+    from infra.user_context import REGISTRY
+    _setup(monkeypatch)
+    monkeypatch.setattr(REGISTRY, "all_contexts", lambda: {
+        1: N(task=N(done=lambda: True)), 2: N(task=N(done=lambda: False))})
+    assert _orch(False)._intelligence_producer_uid() == 2

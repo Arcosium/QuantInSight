@@ -457,11 +457,12 @@ def test_coresight_pending_endpoint_403_for_nonadmin(test_client, monkeypatch):
     import infra.auth_store as _as
 
     nonadmin_uid = 100
-    monkeypatch.setattr(_as, "lookup_session", lambda token: nonadmin_uid if token == "t" else None)
+    from infra import cloudflare_access
+    monkeypatch.setattr(cloudflare_access, "verify", lambda token: (nonadmin_uid, 9999999999))
     monkeypatch.setattr(_as, "is_admin", lambda uid: False)
 
     resp = test_client.get("/api/coresight/pending",
-                           cookies={"arquant_session": "t"})
+                           headers={"Cf-Access-Jwt-Assertion": "verified-in-test"})
     assert resp.status_code == 403
 
 
@@ -470,12 +471,13 @@ def test_coresight_approve_endpoint_403_for_nonadmin(test_client, monkeypatch):
     import infra.auth_store as _as
 
     nonadmin_uid = 101
-    monkeypatch.setattr(_as, "lookup_session", lambda token: nonadmin_uid if token == "t" else None)
+    from infra import cloudflare_access
+    monkeypatch.setattr(cloudflare_access, "verify", lambda token: (nonadmin_uid, 9999999999))
     monkeypatch.setattr(_as, "is_admin", lambda uid: False)
 
     resp = test_client.post("/api/coresight/approve",
                             json={"item_id": "abc"},
-                            cookies={"arquant_session": "t"})
+                            headers={"Cf-Access-Jwt-Assertion": "verified-in-test"})
     assert resp.status_code == 403
 
 
@@ -484,12 +486,13 @@ def test_coresight_reject_endpoint_403_for_nonadmin(test_client, monkeypatch):
     import infra.auth_store as _as
 
     nonadmin_uid = 102
-    monkeypatch.setattr(_as, "lookup_session", lambda token: nonadmin_uid if token == "t" else None)
+    from infra import cloudflare_access
+    monkeypatch.setattr(cloudflare_access, "verify", lambda token: (nonadmin_uid, 9999999999))
     monkeypatch.setattr(_as, "is_admin", lambda uid: False)
 
     resp = test_client.post("/api/coresight/reject",
                             json={"item_id": "abc"},
-                            cookies={"arquant_session": "t"})
+                            headers={"Cf-Access-Jwt-Assertion": "verified-in-test"})
     assert resp.status_code == 403
 
 
@@ -501,13 +504,14 @@ def test_coresight_pending_endpoint_admin_ok(test_client, monkeypatch):
     import tempfile
 
     admin_uid = 200
-    monkeypatch.setattr(_as, "lookup_session", lambda token: admin_uid if token == "t" else None)
+    from infra import cloudflare_access
+    monkeypatch.setattr(cloudflare_access, "verify", lambda token: (admin_uid, 9999999999))
     monkeypatch.setattr(_as, "is_admin", lambda uid: uid == admin_uid)
     # tmp profiles dir
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setattr(ci, "_PROFILES_DIR", Path(td) / "profiles")
         resp = test_client.get("/api/coresight/pending",
-                               cookies={"arquant_session": "t"})
+                               headers={"Cf-Access-Jwt-Assertion": "verified-in-test"})
     assert resp.status_code == 200
     data = resp.json()
     assert "pending" in data

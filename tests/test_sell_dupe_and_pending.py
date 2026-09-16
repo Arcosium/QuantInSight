@@ -6,7 +6,6 @@
 2) 모의계정 수익률 ±40% 튐 — 모의 해외 순평가는 USD 부채 때문에 **음수**이고, 그 부채는
    해외 보유목록이 비어도 남는다. 종전엔 주식분이 0 이면 산출을 포기해 부채가 사라졌다.
 3) LLM 응답의 `**` 강조 마커.
-4) 타임폴리오 '접수(미체결)' 주문의 지연 체결 확정.
 """
 import json
 
@@ -14,7 +13,6 @@ from agents.committee import _SELL_STANCES, KEEP, HALF, ALL
 from infra.kis_broker import KISBroker
 from infra.local_llm_client import strip_markdown_emphasis
 from main_swarm import dedupe_sell_orders
-from timefolio_swarm import resolve_pending
 
 
 # ── 1) 매도 주문 중복 제거 ────────────────────────────────────────────────────
@@ -95,32 +93,6 @@ def test_strip_markdown_emphasis():
     assert strip_markdown_emphasis("잔여 ** 마커") == "잔여  마커"     # 짝 안 맞아도 제거
     assert strip_markdown_emphasis("정상 문장") == "정상 문장"          # 본문은 불변
     assert strip_markdown_emphasis(None) == ""
-
-
-# ── 4) 타임폴리오 접수(미체결) → 지연 체결 확정 ───────────────────────────────
-def test_resolve_pending_confirms_fill_from_site_holdings():
-    pending = [{"ticker": "004370", "side": "sell", "qty": 17, "price": 384000.0,
-                "before_qty": 96, "age": 0}]
-    done, still = resolve_pending(pending, [{"code": "004370", "qty": 79}])
-    assert still == []
-    assert done[0]["fill_qty"] == 17
-
-
-def test_resolve_pending_caps_fill_at_order_qty():
-    """외부 거래로 수량이 더 많이 움직여도 우리 주문수량 이상은 체결로 잡지 않는다."""
-    pending = [{"ticker": "034730", "side": "buy", "qty": 88, "before_qty": 0, "age": 0}]
-    done, _ = resolve_pending(pending, [{"code": "034730", "qty": 300}])
-    assert done[0]["fill_qty"] == 88
-
-
-def test_resolve_pending_keeps_waiting_then_expires():
-    pending = [{"ticker": "024110", "side": "sell", "qty": 1101, "before_qty": 1101, "age": 0}]
-    done, still = resolve_pending(pending, [{"code": "024110", "qty": 1101}])
-    assert done == [] and still[0]["age"] == 1
-    done, still = resolve_pending(still, [{"code": "024110", "qty": 1101}])
-    assert done == [] and still[0]["age"] == 2
-    done, still = resolve_pending(still, [{"code": "024110", "qty": 1101}])
-    assert done == [] and still == []            # 3사이클 무변화 → 취소로 보고 폐기
 
 
 # ── 매도 심의 스탠스는 그대로 매도지시가 된다 ─────────────────────────────────

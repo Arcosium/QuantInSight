@@ -200,68 +200,6 @@ data class StartRequest(val directive: String? = null)
 @Serializable
 data class StrategySetRequest(val name: String)
 
-// ─── Auth (사장 피드백 2026-05-16: CF Access 제거 → 앱 자체 로그인) ───────────
-// 거래 계정 등록: KIS 자격증명 (LLM은 서버의 로컬 모델을 공용 사용)
-@Serializable
-data class LoginRequest(
-    val username: String,
-    val password: String,
-    val remember: Boolean = true,
-)
-
-@Serializable
-data class RegisterRequest(
-    val username: String,
-    val password: String,
-    @SerialName("account_mode") val accountMode: String = "viewer",
-    @SerialName("kis_app_key") val kisAppKey: String = "",
-    @SerialName("kis_app_secret") val kisAppSecret: String = "",
-    @SerialName("kis_account_no") val kisAccountNo: String = "",
-    @SerialName("kis_base_url") val kisBaseUrl: String = "https://openapi.koreainvestment.com:9443",
-    val remember: Boolean = true,
-)
-
-// ─── Recovery (5-2: 아이디/비밀번호 찾기) ──────────────────────────────────
-@Serializable
-data class RecoverIdRequest(
-    @SerialName("kis_account_no") val kisAccountNo: String,
-    @SerialName("kis_app_secret") val kisAppSecret: String,
-)
-
-@Serializable
-data class RecoverIdResponse(
-    val username: String = "",
-)
-
-@Serializable
-data class RecoverPwRequest(
-    val username: String,
-    @SerialName("kis_account_no") val kisAccountNo: String,
-    @SerialName("kis_app_secret") val kisAppSecret: String,
-    @SerialName("new_password") val newPassword: String,
-)
-
-@Serializable
-data class RecoverPwResponse(
-    val ok: Boolean = false,
-)
-
-@Serializable
-data class UsernameCheck(val ok: Boolean = false, val available: Boolean = false)
-
-@Serializable
-data class AuthResponse(
-    val ok: Boolean = false,
-    @SerialName("user_id") val userId: Int = 0,
-    val token: String = "",
-)
-
-@Serializable
-data class AuthStatusResponse(
-    @SerialName("has_accounts") val hasAccounts: Boolean = false,
-    val authenticated: Boolean = false,
-)
-
 @Serializable
 data class MeResponse(
     @SerialName("user_id") val userId: Int = 0,
@@ -278,31 +216,8 @@ interface ArQuantApi {
     @GET("health")
     suspend fun health(): Map<String, String>
 
-    // ─── Auth ───────────────────────────────────────────────
-    @GET("api/auth_status")
-    suspend fun authStatus(): AuthStatusResponse
-
-    @GET("api/check_username")
-    suspend fun checkUsername(@Query("u") u: String): UsernameCheck
-
-    @POST("api/login")
-    suspend fun login(@Body req: LoginRequest): AuthResponse
-
-    @POST("api/register")
-    suspend fun register(@Body req: RegisterRequest): AuthResponse
-
-    @POST("api/logout")
-    suspend fun logout(): SimpleMessage
-
     @GET("api/me")
     suspend fun me(): MeResponse
-
-    // ─── Recovery (5-2) ────────────────────────────────────────────────────
-    @POST("api/recover_id")
-    suspend fun recoverId(@Body req: RecoverIdRequest): RecoverIdResponse
-
-    @POST("api/recover_password")
-    suspend fun recoverPassword(@Body req: RecoverPwRequest): RecoverPwResponse
 
     @GET("api/status")
     suspend fun status(): StatusResponse

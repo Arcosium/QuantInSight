@@ -20,7 +20,10 @@ class _Sess:
         return _Resp(self.payload)
 
 def _broker(monkeypatch, payload, is_mock=True):
-    b = KISBroker(_CREDS); b.is_mock = is_mock
+    creds = dict(_CREDS)
+    if is_mock:
+        creds["kis_base_url"] = "https://openapivts.koreainvestment.com:29443"
+    b = KISBroker(creds)
     async def _tok(): return "T"
     async def _s(): return _Sess(payload)
     monkeypatch.setattr(b, "token", _tok)

@@ -158,7 +158,9 @@ MATERIAL_NEWS_KEYWORDS = [
 ]
 
 # ─── Live Trading (KIS) ─────────────────────────────────────────────────────
-LIVE_TRADING         = True           # actually place KIS orders in the EXECUTION step
+LIVE_TRADING         = True           # submit orders through the selected broker; PAPER_ONLY blocks live execution
+PAPER_ONLY           = os.getenv("QIS_PAPER_ONLY", "1") != "0"  # current default; live support retained
+SYSTEMATIC_POLICY_ENABLED = os.getenv("QIS_SYSTEMATIC_POLICY_ENABLED", "1") != "0"
 MAX_TRADES_PER_CYCLE = 2              # at most this many real orders executed per analysis cycle (sells prioritized)
 
 # ─── 유휴 USD → KRW 자동 역환전 (사장 보고 2026-06-26) ────────────────────────────
@@ -251,11 +253,11 @@ COMMODITY_ETF_POOL_US = [
     ("DBC", "Invesco Commodity Index",   "na", "broad", "exposed"),
 ]
 
-# ─── ADMIN 단일 인텔리전스 공유 (사장 지시 2026-06-08) ─────────────────────────
-# hh09080(ADMIN)이 시장 전역 분석(뉴스 분류·매크로 리서치·매크로 분석)을 사이클마다 1회
-# 산출·게시하고, 비관리자 계정은 그 결과를 공유받아 같은 LLM 호출을 중복하지 않는다.
+# ─── 실행 프로필 간 공통 분석 공유 ──────────────────────────────────────────
+# 실행 중인 프로필 하나가 뉴스·매크로 분석을 게시하고 다른 실행 프로필이 공유한다.
+# 실전·모의 여부와 관리자 권한은 분석 역할에 영향을 주지 않는다.
 SHARE_MARKET_INTELLIGENCE = True   # 마스터 토글. False면 전 계정이 현행대로 각자 계산
-SHARE_PRODUCER_WAIT_SEC   = 420    # 소비자가 ADMIN 게시를 기다리는 단계별 최대 초(초과 시 자체계산 폴백)
+SHARE_PRODUCER_WAIT_SEC   = 420    # 소비자가 실행 중인 대표 프로필의 게시를 기다리는 단계별 최대 초(초과 시 자체계산 폴백)
                                    # 2026-07-22: 120초는 생산자 매크로 게시보다 짧아 매번 타임아웃 → 전 단계 자체계산(사이클 21분)
 SHARE_STALE_OK_SEC        = 30*60  # 직전 게시분을 이 시간 안이면 재사용(매크로 캐시 TTL과 동일)
 QUANT_CONCURRENCY         = 2      # 종목별 계량분석 동시 실행 수(사장 지시 2026-07-22: 사이클 최대 병목)
@@ -304,10 +306,9 @@ CONSERVATIVE_STOCK_RATIO = 0.15       # a single position's notional may not exc
 # spec: docs/superpowers/specs/2026-06-04-strategy-param-expansion-design.md
 # (A) 종목 필터 — 매수 자격
 MIN_QUANT_SCORE        = 6            # 결정론 게이트: 퀀트점수 < 이 값인 최종 매수대상은 제거(0~10)
-# 비용인지 진입 엣지 게이트(2026-06-18 고회전 수익화) — 결정론. 일간기대이동(sigma20/√252)이
-# 왕복비용(US 0.6%/KR 0%)을 MIN_NET_EDGE_PCT 이상 못 넘는 매수후보를 제거(비용 못 버는 고회전 차단).
-ENABLE_COST_EDGE_GATE  = True         # 비용인지 진입 엣지 게이트 on/off
-MIN_NET_EDGE_PCT       = 0.8          # 진입 요구 순엣지(%) = 일간기대이동 − 왕복비용. 운용지원실장 튜닝 핵심키
+# 완성 일봉의 비중복 5거래일 순수익을 검증한다. 변동성은 기대수익이 아니다.
+ENABLE_COST_EDGE_GATE  = False        # retired; experimental edge is shadow-only
+MIN_NET_EDGE_PCT       = 0.8          # conservative historical net estimate (%)
 MAX_BUY_VOLATILITY_PCT = 0.0          # 프롬프트: 연환산 변동성(%)이 이 값 초과면 매수부적합 (0=off)
 RSI_OVERBOUGHT_SKIP    = 0            # 프롬프트: RSI 이 값 초과(과매수)면 신규매수 회피 (0=off)
 MIN_ADX_FOR_BUY        = 0            # 프롬프트: ADX 이 값 미만(추세약)이면 매수부적합 (0=off, 추세추종용)
@@ -451,7 +452,7 @@ STRATEGY_TUNABLE_KEYS = [
     "MIN_QUANT_SCORE", "MAX_BUY_VOLATILITY_PCT", "RSI_OVERBOUGHT_SKIP", "MIN_ADX_FOR_BUY",
     "REQUIRE_FOREIGN_NET_BUY", "MAX_PRICE_EXTENSION_PCT",
     # 비용인지 진입 엣지 게이트 (고회전 수익화, 2026-06-18)
-    "ENABLE_COST_EDGE_GATE", "MIN_NET_EDGE_PCT",
+    "MIN_NET_EDGE_PCT",
     # (B) 결정론 점수 엔진 — 퀀트 지표 가중치 + 차원 가중치 + 토글 (사장 지시 2026-06-04, QW_* 대체)
     "QIW_RSI", "QIW_MACD", "QIW_ADX", "QIW_VWAP", "QIW_VOL", "QIW_MOM", "QIW_CMF", "QIW_FLOW", "QIW_HIGH52",
     "QIW_LEADLAG", "QIW_VOLUME_SURGE",
@@ -570,10 +571,10 @@ STRATEGY_KEY_META = {
                                    "help": "현재가가 VWAP/이동평균 대비 이 값 초과로 위에 있으면 추격매수 회피 (0 = 제한 없음)",
                                    "min": 0, "max": 50, "step": 1, "group": "종목 필터"},
     "ENABLE_COST_EDGE_GATE":      {"label": "비용인지 진입 엣지 게이트", "type": "bool",
-                                   "help": "ON이면 일간기대이동(변동성)이 왕복비용(US 0.6%/KR 0%)을 '최소 순엣지'만큼 못 넘는 매수후보를 제거 — 고회전 비용출혈 차단",
+                                   "help": "폐기된 설정입니다. 실험 진입 규칙은 기록만 하며 매매에 반영하지 않습니다.",
                                    "group": "종목 필터"},
-    "MIN_NET_EDGE_PCT":           {"label": "최소 순엣지 (일간기대이동 − 왕복비용, %)", "type": "pct_raw", "unit": "%",
-                                   "help": "매수 진입 요구 순엣지(%). 올리면 비용 대비 기대수익 큰 종목만(고회전 수익성↑·매매수↓), 내리면 폭넓게. US는 0.6% 비용이 추가로 깔린다",
+    "MIN_NET_EDGE_PCT":           {"label": "실험 순엣지 기준 (관찰 전용, %)", "type": "pct_raw", "unit": "%",
+                                   "help": "5거래일 평균수익을 보수적으로 축소하고 표준오차와 왕복비용(KR 0.35%, US 0.70% 가정)을 뺀 하한입니다. 관찰 기록에만 쓰며 매매 선정에는 반영하지 않습니다.",
                                    "min": 0, "max": 5, "step": 0.1, "group": "종목 필터"},
     # (B) 결정론 점수 엔진 — 퀀트 지표 가중치(signed, 음수 허용) (사장 지시 2026-06-04)
     "QIW_RSI":                    {"label": "지표 가중치: RSI(과매수/과매도)", "type": "int", "unit": "",
@@ -772,8 +773,8 @@ STRATEGY_KEY_EFFECT = {
     "MIN_ADX_FOR_BUY": "올리면 강한 추세 종목만 매수(추세추종), 0=제한없음.",
     "REQUIRE_FOREIGN_NET_BUY": "켜면 외국인 순매수 종목만(수급 방어), 끄면 무관.",
     "MAX_PRICE_EXTENSION_PCT": "내리면 이평/VWAP 멀리 뜬 종목 추격 회피(역추세), 0=제한없음.",
-    "ENABLE_COST_EDGE_GATE": "켜면 비용 못 버는 저변동 매수 차단(특히 US 0.6% 왕복비용). 고회전인데 손실이면 켜라.",
-    "MIN_NET_EDGE_PCT": "올리면 비용 대비 기대이동 큰 종목만 매수(고회전 수익성↑·매매수↓), 내리면 폭넓게. 고회전 수익화 핵심 레버.",
+    "ENABLE_COST_EDGE_GATE": "폐기된 설정. 변동성을 기대수익으로 취급하지 않는다.",
+    "MIN_NET_EDGE_PCT": "5거래일 추정치의 관찰 기준. 매매에 반영하지 않으며 별도의 검증이 필요하다.",
     "QIW_RSI": "+면 과매도 매수·과매수 회피(평균회귀). 음수면 반대(RSI 높을수록 가점=모멘텀).",
     "QIW_MACD": "+면 MACD 상승 모멘텀에 가점. 음수면 역추세.",
     "QIW_ADX": "+면 강한 상승추세에 가점(추세추종). 0이면 추세 무시.",
@@ -826,7 +827,7 @@ STRATEGY_KEY_EFFECT = {
     "SHARE_MARKET_INTELLIGENCE": "켜면 ADMIN이 매크로·뉴스 분석을 1회만 하고 다른 계정이 공유(LLM 비용↓), 끄면 계정마다 각자 계산.",
     "QUANT_CONCURRENCY": "올리면 종목별 계량분석을 더 많이 동시 실행(사이클 단축), 내리면 LLM 슬롯 점유↓(1=순차).",
     "SHARE_STALE_OK_SEC": "직전 시각에 게시된 매크로·뉴스 분석을 이 시간 안이면 재사용(중복 LLM 호출 방지).",
-    "SHARE_PRODUCER_WAIT_SEC": "올리면 ADMIN 분석을 더 오래 기다림(공유 적중↑), 내리면 빨리 자체계산으로 전환(지연↓).",
+    "SHARE_PRODUCER_WAIT_SEC": "올리면 대표 프로필의 분석을 더 오래 기다림(공유 적중↑), 내리면 빨리 자체계산으로 전환(지연↓).",
     "ENABLE_BOND_ETF": "켜면 매크로 채권 권고를 채권 ETF로 실현(자산배분 충실), 끄면 채권 매매 안 함.",
     "BOND_TARGET_MAX_PCT": "올리면 채권에 더 많이 배분 허용, 내리면 채권 상한 축소.",
     "BOND_REBALANCE_BAND_PCT": "올리면 채권 교체 둔감(churn↓), 내리면 목표 추종 민감.",
@@ -872,7 +873,7 @@ STRATEGY_DEFAULTS = {
     "MAX_TRADES_PER_CYCLE": 2, "MAX_ORDER_QTY": 0,
     "MIN_QUANT_SCORE": 6, "MAX_BUY_VOLATILITY_PCT": 0, "RSI_OVERBOUGHT_SKIP": 0, "MIN_ADX_FOR_BUY": 0,
     "REQUIRE_FOREIGN_NET_BUY": False, "MAX_PRICE_EXTENSION_PCT": 0,
-    "ENABLE_COST_EDGE_GATE": True, "MIN_NET_EDGE_PCT": 0.8,
+    "ENABLE_COST_EDGE_GATE": False, "MIN_NET_EDGE_PCT": 0.8,
     "QIW_RSI": 5, "QIW_MACD": 10, "QIW_ADX": 8, "QIW_VWAP": 8, "QIW_VOL": 8,
     "QIW_MOM": 12, "QIW_CMF": 8, "QIW_FLOW": 12, "QIW_HIGH52": 8, "QIW_LEADLAG": 8, "QIW_VOLUME_SURGE": 8,
     "ENABLE_LEADLAG_SIGNAL": True, "LEADLAG_LOOKBACK_MIN": 30, "LEADLAG_MIN_BUY_SIGNAL": 0.5,
@@ -898,31 +899,3 @@ del _k
 # ─── Server ──────────────────────────────────────────────────────────────────
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", "8500"))
-
-# ─── Timefolio 대회 전용 사이클 (timefolio_swarm.py — 사장 지시 2026-07-09) ────
-# account_mode=timefolio 계정만 쓰는 파라미터. KIS 파이프라인과 무관.
-TIMEFOLIO_UNIVERSE_CSV = os.getenv(
-    "TIMEFOLIO_UNIVERSE_CSV", str(BASE_DIR / "data" / "universe.csv"))   # market_bars 크롤러가 갱신
-TIMEFOLIO_BARS_DB = os.getenv(
-    "TIMEFOLIO_BARS_DB", str(BASE_DIR / "data" / "bars.db"))   # 읽기 전용(모멘텀 스크린), market_bars 수집
-TIMEFOLIO_MOVERS_TOP = int(os.getenv("TIMEFOLIO_MOVERS_TOP", "12"))            # 분봉 모멘텀 상위 N
-TIMEFOLIO_MAX_CANDIDATES = int(os.getenv("TIMEFOLIO_MAX_CANDIDATES", "16"))    # 적격 스크리닝 입력 상한
-TIMEFOLIO_FINALISTS = int(os.getenv("TIMEFOLIO_FINALISTS", "8"))               # 퀀트·LLM에 올릴 후보 상한
-TIMEFOLIO_MAX_BUYS_PER_CYCLE = int(os.getenv("TIMEFOLIO_MAX_BUYS_PER_CYCLE", "3"))
-TIMEFOLIO_SMALLCAP_BUDGET_PCT = float(os.getenv("TIMEFOLIO_SMALLCAP_BUDGET_PCT", "27"))  # 룰 30% - 버퍼
-TIMEFOLIO_CASH_FLOOR_PCT = float(os.getenv("TIMEFOLIO_CASH_FLOOR_PCT", "2"))   # 최소 현금 유보(주문 거부 방지)
-
-# ─── 타임폴리오 대회 규정으로 고정되는 전략 파라미터 (사장 지시 2026-07-21) ────────
-# 타임폴리오 프로필은 (대회 규정과 충돌하는) 아래 파라미터를 웹·운용지원으로 바꿀 수 없다.
-# 규정: 국내(KOSPI/KOSDAQ) 주식만·단일종목 15%·소형주 30%·정규장. 그 외 전략 파라미터와
-# 운용지원(자동 튜닝)은 자유롭게 조정 가능하다(runtime.set_strategy 가 이 값으로 강제 클램프).
-TIMEFOLIO_LOCKED_PARAMS = {
-    "CONSERVATIVE_STOCK_RATIO": 0.15,    # 단일종목 비중 상한 = 대회 15%
-    "ALLOW_US_STOCKS": False,            # 대회 = 국내주식만
-    "ALLOW_DERIVATIVES": False,
-    "ENABLE_BOND_ETF": False,            # 대회 = 주식만(채권·원자재 트랙 없음)
-    "ENABLE_COMMODITY_ETF": False,
-    "ENABLE_NXT_EXTENDED_HOURS": False,  # 대회 = 정규장(NXT 시간외 없음)
-    "ENABLE_NXT_PRE_MARKET": False,
-    "ENABLE_NXT_AFTER_MARKET": False,
-}

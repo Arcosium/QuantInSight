@@ -30,13 +30,11 @@ class UserContext:
     @property
     def broker(self):
         if self._broker is None:
-            if self.creds.get("account_mode") == auth_store.TIMEFOLIO_MODE:
-                from infra.timefolio_broker import TimefolioBroker
-                self._broker = TimefolioBroker(self.creds)
-            else:
-                from infra.kis_broker import KISBroker
-                self._broker = KISBroker(self.creds,
-                                         token_path=user_paths.token_path(self.uid))
+            if self.creds.get("account_mode", auth_store.TRADING_MODE) != auth_store.TRADING_MODE:
+                raise ValueError("KIS 거래 프로필만 브로커를 생성할 수 있습니다.")
+            from infra.kis_broker import KISBroker
+            self._broker = KISBroker(self.creds,
+                                     token_path=user_paths.token_path(self.uid))
         return self._broker
 
     @property

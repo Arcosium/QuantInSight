@@ -472,6 +472,13 @@ class KISBroker:
         return ("V" + tr_id[1:]) if tr_id[0] in ("T", "J", "C") else tr_id
 
     def _h(self, tok, tr_id):
+        from config import PAPER_ONLY
+        from urllib.parse import urlsplit
+        if PAPER_ONLY and str(tr_id).endswith("U"):
+            endpoint = urlsplit(self.base_url)
+            if (endpoint.scheme, endpoint.hostname, endpoint.port) != (
+                    "https", "openapivts.koreainvestment.com", 29443):
+                raise PermissionError("모의매매 전용: 실전 주문·정정·취소·환전 요청을 차단했습니다")
         return {"content-type":"application/json;charset=utf-8","authorization":f"Bearer {tok}",
                 "appkey":self.app_key,"appsecret":self.app_secret,"tr_id":self._mock_tr(tr_id)}
 
@@ -2029,12 +2036,9 @@ class KISBroker:
                 # 없음(상장폐지/미지원 추정). 0 전송은 원래 버그 재현이라 금지.
                 return (f"[US{'매수' if side == 'buy' else '매도'} 실패] {tk} "
                         f"현재가·일봉 모두 미확보 — 단가 산출 불가, 주문 미전송")
-        if explicit:           # 명시 지정가: 호가 반대쪽이면 체결가능 가격으로 클램프(사장 지시 2026-05-28)
-            cur = await self.us_last_price(tk)
-            unpr, _clamped = marketable_us_limit(side, lp, cur)
-            if _clamped:
-                logger.warning(f"[US주문] {tk} {side} 명시 지정가 ${lp:.2f}가 호가 반대쪽 "
-                               f"(현재 ${cur:.2f}) → 체결가능 ${unpr:.2f}로 클램프")
+        if explicit:
+            # Preserve the committee's price ceiling/floor, even if unfilled.
+            unpr = (math.floor(lp * 100) if side == "buy" else math.ceil(lp * 100)) / 100
         elif side == "buy":    # 매수: 현재가보다 살짝 위(체결 보장), 센트 올림
             unpr = math.ceil(lp * 1.003 * 100) / 100.0
         else:                   # 매도: 현재가보다 살짝 아래, 센트 내림

@@ -62,7 +62,6 @@ PW_MIN_LEN = 10
 ADMIN_USERNAMES = frozenset({"hh09080"})
 VIEWER_MODE = "viewer"
 TRADING_MODE = "trading"
-TIMEFOLIO_MODE = "timefolio"
 
 # ── 통합 계정 프로필 (사장 지시 2026-07-20) ────────────────────────────────────
 # 한 로그인 계정(마스터 행) 아래에 매매 프로필(서브 행)들을 owner_id 로 연결한다.
@@ -71,23 +70,20 @@ TIMEFOLIO_MODE = "timefolio"
 # 컬럼 없이 행의 account_mode·자격증명·base_url 에서 파생한다(상태 이원화 방지).
 PROFILE_KIS_REAL = "kis_real"
 PROFILE_KIS_PAPER = "kis_paper"
-PROFILE_TIMEFOLIO = "timefolio"
-PROFILE_KIND_ORDER = (PROFILE_KIS_REAL, PROFILE_KIS_PAPER, PROFILE_TIMEFOLIO)
+PROFILE_KIND_ORDER = (PROFILE_KIS_REAL, PROFILE_KIS_PAPER)
 PROFILE_KIND_LABELS = {PROFILE_KIS_REAL: "KIS 실전투자",
-                       PROFILE_KIS_PAPER: "KIS 모의투자",
-                       PROFILE_TIMEFOLIO: "타임폴리오"}
+                       PROFILE_KIS_PAPER: "KIS 모의투자"}
 # 서브 프로필 행의 username 접미사 — 직접 로그인 불가 식별자. 가입 시 "::" 포함 금지.
 PROFILE_USERNAME_SEP = "::"
-_PROFILE_SUFFIX = {PROFILE_KIS_REAL: "real", PROFILE_KIS_PAPER: "paper",
-                   PROFILE_TIMEFOLIO: "tf"}
+_PROFILE_SUFFIX = {PROFILE_KIS_REAL: "real", PROFILE_KIS_PAPER: "paper"}
 
 
 def normalize_account_mode(mode: str) -> str:
     mode = (mode or "").strip().lower()
     if mode == VIEWER_MODE:
         return VIEWER_MODE
-    if mode == TIMEFOLIO_MODE:
-        return TIMEFOLIO_MODE
+    if mode not in (TRADING_MODE, ""):
+        raise ValueError("지원하지 않는 계정 모드입니다.")
     return TRADING_MODE
 
 
@@ -512,18 +508,6 @@ def is_viewer(user_id: Optional[int]) -> bool:
         return False
 
 
-def is_timefolio(user_id: Optional[int]) -> bool:
-    if user_id is None:
-        return False
-    try:
-        init()
-        with _DB_LOCK, _connect() as conn:
-            row = conn.execute("SELECT account_mode FROM users WHERE id=?",
-                               (int(user_id),)).fetchone()
-        return bool(row and row["account_mode"] == TIMEFOLIO_MODE)
-    except Exception as e:
-        logger.warning("is_timefolio 조회 실패(user_id=%s): %s", user_id, e)
-        return False
 
 
 def admin_view_uid() -> Optional[int]:
@@ -549,9 +533,7 @@ def profile_kind_of(creds: Dict[str, Any]) -> Optional[str]:
     if not creds:
         return None
     mode = creds.get("account_mode") or TRADING_MODE
-    if mode == TIMEFOLIO_MODE:
-        return PROFILE_TIMEFOLIO
-    if mode == VIEWER_MODE:
+    if mode != TRADING_MODE:
         return None
     if (creds.get("kis_app_key") or "") and (creds.get("kis_account_no") or ""):
         return (PROFILE_KIS_PAPER if _is_mock_url(creds.get("kis_base_url") or "")
@@ -646,14 +628,13 @@ def create_subprofile(owner_uid: int, kind: str, *, kis_app_key: str = "",
     while username_exists(name):
         name = f"{base_name}{n}"
         n += 1
-    mode = TIMEFOLIO_MODE if kind == PROFILE_TIMEFOLIO else TRADING_MODE
     uid = upsert_user(
         username=name, password=secrets.token_urlsafe(24) + "!",
         kis_app_key=kis_app_key, kis_app_secret=kis_app_secret,
         kis_account_no=kis_account_no,
         kis_base_url=(kis_base_url or "https://openapi.koreainvestment.com:9443"),
         label=f"{owner['username']} · {PROFILE_KIND_LABELS.get(kind, kind)}",
-        account_mode=mode)
+        account_mode=TRADING_MODE)
     with _DB_LOCK, _connect() as conn:
         conn.execute("UPDATE users SET owner_id=? WHERE id=?", (int(owner_uid), uid))
     return uid
@@ -879,13 +860,12 @@ def list_members() -> List[Dict[str, Any]]:
 
 
 # 회원관리 표시용 짧은 기능명 (사장 지시 2026-07-21).
-PROFILE_KIND_LABELS_SHORT = {PROFILE_KIS_REAL: "실전", PROFILE_KIS_PAPER: "모의",
-                             PROFILE_TIMEFOLIO: "타임폴리오"}
+PROFILE_KIND_LABELS_SHORT = {PROFILE_KIS_REAL: "실전", PROFILE_KIS_PAPER: "모의"}
 
 
 def admin_member_overview() -> List[Dict[str, Any]]:
     """ADMIN 회원관리용 — 로그인 계정(owner_id=0)만 보이고, 통합 계정의 서브 프로필은
-    마스터에 접혀 '활성 기능(실전/모의/타임폴리오)' 목록으로 표시된다(사장 지시 2026-07-21).
+    마스터에 접혀 '활성 기능(실전/모의)' 목록으로 표시된다(사장 지시 2026-07-21).
     관전 계정은 functions=['관전'].
 
     is_mock: 이 회원에게 **실전 매매 프로필이 없으면** True(= 모의/관전 전용). 계정 통합

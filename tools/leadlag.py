@@ -36,7 +36,7 @@ def _cfg(name: str, default):
 def _bars_db() -> str:
     import os
     _default = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "bars.db")
-    return _cfg("LEADLAG_BARS_DB", _cfg("TIMEFOLIO_BARS_DB", _default))
+    return _cfg("LEADLAG_BARS_DB", _default)
 
 
 def _bucket(ts: str) -> str:

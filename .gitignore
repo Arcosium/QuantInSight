@@ -181,3 +181,4 @@ backups/
 /data
 /.code-review-graph
 /backups
+arquant_mobile/app/src/main/java/com/arquant/mobile/data/ArQuantRepository.kt

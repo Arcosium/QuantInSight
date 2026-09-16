@@ -3,7 +3,7 @@
 Lag_Trading 프로젝트(그랜저 선행-후행 매매 전략)는 폐기됐지만, 그 크롤러가 수집하던
 분봉 데이터는 QuantInSight 의 두 기능이 계속 소비한다:
   · tools/leadlag.py  — 30분 지평 선행-후행 신호(계량 팩터)
-  · timefolio_swarm   — 타임폴리오 모멘텀 후보 선정 + 유니버스
+  · tools/stock_policy.py — 정량 운용안의 유니버스
 
 그래서 크롤러만 이 자기완결 패키지로 이관해 유지한다(죽은 그랜저 엔진 analytics/strategy 는 폐기).
 quantinsight.service 기동 시 `start_background()` 로 백그라운드 스레드 1회 시작 — 별도 systemd
@@ -21,6 +21,10 @@ _lock = threading.Lock()
 
 def start_background():
     """분봉 크롤러를 데몬 스레드로 1회 시작(중복 호출은 무시). 서버 기동 훅에서 호출."""
+    import os
+    if os.getenv("QIS_INTERNAL_BAR_CRAWLER", "0") != "1":
+        log.info("분봉 수집은 CryptoBars 공통 수집기가 담당합니다")
+        return
     global _started
     with _lock:
         if _started:

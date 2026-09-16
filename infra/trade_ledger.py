@@ -21,6 +21,9 @@ import json
 import logging
 import os
 import re
+from collections import Counter
+from contextlib import contextmanager
+from threading import RLock
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -31,6 +34,29 @@ logger = logging.getLogger("arquant.trade_ledger")
 KST = ZoneInfo("Asia/Seoul")
 _DATA_DIR = Path(__file__).parent.parent / "data"
 _DEFAULT_DATA_DIR = _DATA_DIR
+_PENDING_FILL_POLLS = Counter()
+_PENDING_FILL_LOCK = RLock()
+
+
+@contextmanager
+def pending_fill_poll(uid, orders):
+    """An active fill poll owns reconciliation until it completes or is cancelled."""
+    keys = {(int(uid), str(o.get("ticker") or "").strip()) for o in orders}
+    with _PENDING_FILL_LOCK:
+        _PENDING_FILL_POLLS.update(keys)
+    try:
+        yield
+    finally:
+        with _PENDING_FILL_LOCK:
+            for key in keys:
+                _PENDING_FILL_POLLS[key] -= 1
+                if _PENDING_FILL_POLLS[key] <= 0:
+                    del _PENDING_FILL_POLLS[key]
+
+
+def fill_poll_active(uid, ticker):
+    with _PENDING_FILL_LOCK:
+        return _PENDING_FILL_POLLS[(int(uid), str(ticker).strip())] > 0
 
 
 def _writes_allowed() -> bool:
@@ -39,9 +65,11 @@ def _writes_allowed() -> bool:
     테스트가 _DATA_DIR 를 tmp 로 monkeypatch 하면 쓰기 허용."""
     return not (os.environ.get("PYTEST_CURRENT_TEST") and _DATA_DIR == _DEFAULT_DATA_DIR)
 
-# 해외(US) 거래비용 — 매수·매도 각 leg 0.3% (main_swarm.US_TRADE_COST_RATE 와 동일 정책,
-# 순환 import 방지를 위해 여기 별도 정의). 국내(KR)는 0%.
+# Inclusive cost assumptions for economic P&L; not an exact broker fee quote.
+# Applied prospectively. Existing account history is not rewritten.
 US_TRADE_COST_RATE = 0.003
+KR_BUY_COST_RATE = 0.0005
+KR_SELL_COST_RATE = 0.003
 
 _KR_CODE_RE = re.compile(r"^\d{6}$")
 _FILLS_CAP = 300  # 감사용 체결 이력 보존 상한
@@ -212,7 +240,8 @@ def apply_fill(uid, *, ticker: str, side: str, qty, price=None, ccy: str = None,
         logger.warning(f"[원장 uid={uid}] {tk} {side} x{qty}@{px:,.0f} 중복 체결 추정 — 멱등 skip (note={note})")
         return False
 
-    fee = US_TRADE_COST_RATE * px * qty if ccy == "USD" else 0.0
+    fee_rate = US_TRADE_COST_RATE if ccy == "USD" else (KR_BUY_COST_RATE if side == "buy" else KR_SELL_COST_RATE)
+    fee = fee_rate * px * qty
     cash_key = "cash_usd" if ccy == "USD" else "cash_krw"
     _sell_realized = None   # 매도 권위 실현손익(native ccy) — fill 에 기록(버그 E)
     if side == "buy":
@@ -227,6 +256,7 @@ def apply_fill(uid, *, ticker: str, side: str, qty, price=None, ccy: str = None,
             pos = {"qty": qty, "avg_cost": px, "ccy": ccy}
             positions[tk] = pos
         pos["last_price"] = px
+        pos["entry_fees"] = _f(pos.get("entry_fees")) + fee
         if approx:
             pos["approx_basis"] = True
     else:  # sell
@@ -236,7 +266,9 @@ def apply_fill(uid, *, ticker: str, side: str, qty, price=None, ccy: str = None,
             # 원장 fills 는 멱등이라 trade_log 부분체결 재방출 이중계상을 안 탄다 → realized_stats 권위 소스.
             _basis = _f(pos.get("avg_cost")) or _f(avg_cost)
             if _basis > 0:
-                _sell_realized = (px - _basis) * qty - fee
+                entry_fee = _f(pos.get("entry_fees"))*min(1., qty/max(1, int(pos.get("qty") or 0)))
+                _sell_realized = (px - _basis) * qty - fee - entry_fee
+                pos["entry_fees"] = max(0., _f(pos.get("entry_fees"))-entry_fee)
             pos["qty"] = int(pos.get("qty") or 0) - qty
             pos["last_price"] = px
             if pos["qty"] <= 0:
@@ -251,7 +283,8 @@ def apply_fill(uid, *, ticker: str, side: str, qty, price=None, ccy: str = None,
     fills: List[dict] = led.setdefault("fills", [])
     _fill = {"ts": _now_str(), "ticker": tk, "side": side, "qty": qty,
              "price": px, "ccy": ccy, "fee": round(fee, 4),
-             "approx_price": approx, "note": str(note or "")[:120]}
+             "approx_price": approx, "note": str(note or "")[:120],
+             "cost_basis": "estimated_inclusive_v2"}
     if _sell_realized is not None:
         _fill["realized"] = round(_sell_realized, 4)
     fills.append(_fill)
@@ -456,6 +489,9 @@ def prune_phantoms(uid, holdings: List[dict], *, min_confirmations: int = 3) -> 
     pruned: List[str] = []
     removed_krw = 0.0
     for code in list(positions.keys()):
+        if fill_poll_active(uid, code):
+            streak.pop(code, None)
+            continue
         if not _is_kr(code):                 # KR 전용 (US 는 글리치 빈번 → 제외)
             streak.pop(code, None)
             continue
@@ -520,6 +556,9 @@ def adopt_orphans(uid, holdings: List[dict], *, min_confirmations: int = 3) -> d
     adopted: List[str] = []
     added_krw = 0.0
     for code in list(kis.keys()):
+        if fill_poll_active(uid, code):
+            streak.pop(code, None)
+            continue
         if not _is_kr(code):                 # KR 전용 (US 는 글리치 빈번 → 제외)
             streak.pop(code, None)
             continue
@@ -624,7 +663,7 @@ def repair_from_recent_partial_orders(uid, holdings: List[dict], *, cycles_limit
         for e in rows or []:
             tk = str(e.get("ticker") or "").strip()
             side = str(e.get("side") or "buy").strip().lower()
-            if not tk or not _is_kr(tk) or side not in ("buy", "sell"):
+            if not tk or not _is_kr(tk) or side not in ("buy", "sell") or fill_poll_active(uid, tk):
                 continue
             try:
                 reported_qty = int(e.get("qty") or 0)

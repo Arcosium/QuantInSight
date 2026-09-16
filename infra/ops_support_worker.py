@@ -735,6 +735,20 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
         plan.get("param_overrides") or {}, has_cycle_data, is_manual=is_manual)
     if _gate_reason:
         rationale = (f"{_gate_reason} " + rationale).strip()
+    # Automatic proposals must not change the baseline they are being judged on.
+    _research_id = None
+    if raw_ov and not is_manual:
+        try:
+            if actor_uid is not None:
+                from infra.strategy_research import record_proposal
+                _research_id = record_proposal(int(actor_uid), raw_ov,
+                    rationale=rationale, trigger=trigger)
+        except Exception as exc:
+            logger.warning("Research snapshot failed: %s", type(exc).__name__)
+        raw_ov = {}  # fail closed even if the journal is unavailable
+        summary = "전략 변경안 검증 대기"
+        rationale = (rationale + " | 기존 전략과 같은 데이터·비용으로 비교하고, "
+                     "시간 순서 검증과 모의매매 성과를 확인하기 전에는 자동 반영하지 않습니다.")
     # 거버넌스 2026-06-05 — 정책/구조 플래그(자산군·엔진) 처리는 트리거별로 다르다:
     #   manual(사장)=즉시 / weekly(토)=사장 승인 대기 회부 / cycle(평일)=차단.
     # ops 가 미국 주식을 꺼 실거래 매수가 막혔던 사고 재발 방지.
@@ -818,7 +832,7 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
         except Exception as e:
             logger.warning(f"주간 검증 큐 회부 실패: {e}")
     # 소스 변경 제안은 사람이 읽을 설명으로만 보존 (적용 안 함)
-    proposed = []
+    proposed = ([f"전략 연구 {_research_id}: 검증 대기"] if _research_id else [])
     for ch in (plan.get("changes") or []):
         f = (ch.get("file") or "?")
         a = (ch.get("action") or "modify")
@@ -847,7 +861,7 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
             logger.warning(f"ops_param_log 기록 실패: {e}")
 
     if applied_ov:
-        head = f"✅ 전략 파라미터 튜닝 {len(applied_ov)}건 반영 (다음 로그인 시 활성화)"
+        head = f"✅ 전략 파라미터 튜닝 {len(applied_ov)}건 반영"
     elif proposed:
         head = f"📝 개선 제안 {len(proposed)}건 — 참고용 (자동 적용 안 함)"
     elif "변경 없음" in summary or "변경 사항 없음" in summary:
@@ -892,6 +906,7 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
                 "role": role, "role_display": display, "trigger": trigger,
                 "cycle_id": cycle_id, "summary": summary, "rationale": rationale,
                 "overrides_applied": applied_ov,
+                "research_id": _research_id,
                 "proposed_source_changes": proposed,
                 "restarted": False,
             })
