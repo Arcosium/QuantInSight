@@ -158,15 +158,6 @@ def set_overrides(uid: int, params: Dict[str, Any]) -> Dict[str, Any]:
     return accepted
 
 
-def clear_overrides(uid: int) -> None:
-    try:
-        p = _overrides_path(uid)
-        if p.exists():
-            p.unlink()
-    except Exception:
-        pass
-
-
 def last_updated(uid: Optional[int]) -> Optional[str]:
     """이 프로필 오버라이드가 마지막으로 갱신된 시각(KST 'YYYY-MM-DD HH:MM:SS').
     운용지원실장이 파라미터를 조정할 때마다 set_overrides 가 overrides.json 을 다시 쓰므로
@@ -232,31 +223,3 @@ def load_proposals(uid: Optional[int]) -> List[Dict[str, Any]]:
         return []
 
 
-def proposal_summary_text(uid: Optional[int], limit: int = 20) -> str:
-    """비관리자 계정의 '@운용지원실장 이력 보여줘' 응답용 사람-친화 텍스트."""
-    h = load_proposals(uid)[-limit:]
-    if not h:
-        return ("📋 운용지원실장 제안 이력이 아직 없습니다.\n"
-                "ℹ️ 운용지원실장에게 내린 튜닝 지시는 이 프로필 전용 파라미터로 반영됩니다 "
-                "(전략·예산·익절/손절 등).")
-    lines = [f"📋 (비관리자 프로필) 운용지원실장 제안·프로필 반영 이력 — 최근 {len(h)}건:"]
-    for i, r in enumerate(h, 1):
-        ts = r.get("ts", "?")
-        disp = r.get("role_display") or "운용지원실장"
-        lines.append(f"\n━━━ [{i}] {ts} ({disp}) ━━━")
-        lines.append(f"요약: {r.get('summary', '(요약 없음)')}")
-        rat = (r.get("rationale") or "").strip()
-        if rat:
-            lines.append(f"근거: {rat[:300]}{'...' if len(rat) > 300 else ''}")
-        ova = r.get("overrides_applied") or {}
-        if ova:
-            lines.append(f"✅ 이 프로필에 반영된 파라미터 ({len(ova)}건):")
-            for k, v in ova.items():
-                lines.append(f"  • {k} = {v}")
-        prop = r.get("proposed_source_changes") or []
-        if prop:
-            lines.append(f"📝 소스 변경 제안(미적용 — ADMIN만 반영 가능) {len(prop)}건:")
-            for s in prop[:5]:
-                lines.append(f"  • {s}")
-    lines.append("\n(소스 .py 변경·서버 재시작은 ADMIN 계정에서만 전체 반영됩니다.)")
-    return "\n".join(lines)

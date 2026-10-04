@@ -15,7 +15,6 @@ import infra.ops_support_worker as w
 
 def _patch_boom(monkeypatch):
     calls = []
-    monkeypatch.setattr(w, "DEEPSEEK_API_KEY", "test-key")
     # raising=False — RED 단계(아직 record_error 미도입)에서도 attribute 생성 허용.
     monkeypatch.setattr(w, "record_error",
                         lambda *a, **k: calls.append((a, k)), raising=False)

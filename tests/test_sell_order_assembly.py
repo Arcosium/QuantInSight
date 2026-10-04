@@ -48,3 +48,39 @@ def test_hold_directive_produces_no_order():
     holdings = [{"code": "XOM", "qty": 3, "pnl_pct": -2.0, "cur_price": 110.0}]
     orders, _ = _assemble_sell_orders(holdings, {"XOM": "보유"}, **_PARAMS)
     assert orders == []
+
+
+def test_hard_take_profit_overrides_llm_hold_and_sells_all():
+    """+20%인데 LLM이 보유/절반을 반복해 잔여주가 고착되는 일을 막는다."""
+    holdings = [{"code": "214450", "name": "파마리서치", "qty": 2,
+                 "pnl_pct": 20.4, "cur_price": 408500.0}]
+    orders, _ = _assemble_sell_orders(holdings, {"214450": "보유"}, **_PARAMS)
+    assert len(orders) == 1
+    assert orders[0]["qty"] == 2
+    assert "자동 익절" in orders[0]["reason"]
+
+
+def test_hard_take_profit_ignores_llm_limit_price_and_uses_market():
+    """실제 손익 안전망은 낡거나 환각된 LLM 지정가 때문에 미체결돼선 안 된다."""
+    holdings = [{"code": "214450", "name": "파마리서치", "qty": 2,
+                 "pnl_pct": 20.4, "cur_price": 408500.0}]
+    orders, _ = _assemble_sell_orders(
+        holdings, {"214450": "보유"},
+        sell_prices={"214450": {"mode": "limit", "limit_price": 500000}},
+        **_PARAMS)
+    assert len(orders) == 1
+    assert orders[0]["qty"] == 2 and orders[0]["price_type"] == "market"
+    assert "entry_limit" not in orders[0]
+
+
+def test_hard_stop_loss_overrides_llm_hold():
+    holdings = [{"code": "005930", "qty": 3, "pnl_pct": -8.0, "cur_price": 70_000.0}]
+    orders, _ = _assemble_sell_orders(holdings, {"005930": "보유"}, **_PARAMS)
+    assert orders[0]["qty"] == 3 and "자동 손절" in orders[0]["reason"]
+
+
+def test_disabling_rebalance_preserves_explicit_hold_escape_hatch():
+    params = {**_PARAMS, "enable_rebalance": False}
+    holdings = [{"code": "214450", "qty": 2, "pnl_pct": 20.4, "cur_price": 408500.0}]
+    orders, _ = _assemble_sell_orders(holdings, {"214450": "보유"}, **params)
+    assert orders == []

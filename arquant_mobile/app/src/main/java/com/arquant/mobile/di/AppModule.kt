@@ -33,9 +33,9 @@ object AppModule {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
-        // 사장 피드백 2026-05-16: CF Access 제거 → 앱 세션 토큰을 X-Session 헤더로 주입.
+        // Cloudflare Access application cookie is scoped to the protected host.
         .addInterceptor(authInterceptor)
-        // 서버는 미인증 시 JSON 401을 반환(302 아님)하므로 followRedirects 기본값으로 둬도 안전하나,
+        // Access redirects expired sessions to sign-in; API clients must not follow it.
         // 보수적으로 자동 리다이렉트는 차단 유지.
         .followRedirects(false)
         .addInterceptor(HttpLoggingInterceptor().apply {

@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple
+import math
 
 
 def _to_bool(v: Any) -> bool:
@@ -104,6 +105,9 @@ def clamp_overrides(overrides: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str
             num = float(v)
         except Exception:
             notes.append(f"{k}: 숫자 아님({v!r}) → 무시")
+            continue
+        if not math.isfinite(num):
+            notes.append(f"{k}: 유한한 숫자가 아님 → 무시")
             continue
         lo = m.get("min"); hi = m.get("max")
         orig = num

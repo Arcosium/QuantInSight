@@ -18,8 +18,8 @@ def tmp_admin(monkeypatch, tmp_path):
 
 
 def test_resolve_model_prefers_override(tmp_admin):
-    tmp_admin.set_config(model_overrides={"macro_researcher": "deepseek-v4-flash"})
-    assert tmp_admin.resolve_model("macro_researcher", "fallback") == "deepseek-v4-flash"
+    tmp_admin.set_config(model_overrides={"macro_researcher": config.LOCAL_LLM_MODEL})
+    assert tmp_admin.resolve_model("macro_researcher", "fallback") == config.LOCAL_LLM_MODEL
 
 
 def test_resolve_model_falls_back_to_config(tmp_admin):
@@ -31,5 +31,5 @@ def test_resolve_model_falls_back_to_config(tmp_admin):
 
 def test_resolve_model_default_when_unknown_key(tmp_admin):
     tmp_admin.set_config(model_overrides={})
-    assert tmp_admin.resolve_model("no_such_key", "deepseek-v4-flash") == \
-        "deepseek-v4-flash"
+    assert tmp_admin.resolve_model("no_such_key", config.LOCAL_LLM_MODEL) == \
+        config.LOCAL_LLM_MODEL

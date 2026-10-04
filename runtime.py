@@ -9,13 +9,15 @@ A "strategy" = the set of tunable trading parameters (sizing, TP/SL, risk gates,
   runtime.set_strategy(custom={...})       # apply ad-hoc params, persist, append to history
   runtime.history()
 """
-import json, time
+import json, os
 from datetime import datetime
 from pathlib import Path
 import config
 
-_DIR = Path(__file__).parent / "data"
-_DIR.mkdir(exist_ok=True)
+# import 시점에 data/ 를 생성·시드하므로, 테스트 격리를 위해 env 오버라이드를 허용한다
+# (QUANTINSIGHT_DATA_DIR 미설정이면 기본 <project>/data). 라이브는 미설정 → 기존과 동일.
+_DIR = Path(os.environ["QUANTINSIGHT_DATA_DIR"]) if os.environ.get("QUANTINSIGHT_DATA_DIR") else (Path(__file__).parent / "data")
+_DIR.mkdir(parents=True, exist_ok=True)
 _STATE = _DIR / "strategy_state.json"
 _HIST = _DIR / "strategy_history.json"
 _OPS_FLAG = _DIR / "ops_feedback.json"      # 사장 피드백 2026-05-18: 운용지원실장 피드백 on/off 토글
@@ -109,50 +111,7 @@ def set_ops_feedback(enabled: bool, uid=None, by: str = "dashboard") -> dict:
     return ops_feedback_state(uid)
 
 
-# ── API 비용 표시 모드 — 프로필(계정)별 (사장 지시 2026-05-21) ───────────────────
-# 우상단 API 비용 표시를 시간(/h)·일(/d)·월(/m)·총누적(total) 중 하나로 프로필별 선택.
-# 저장 형식: {"_default": {"mode": "h"}, "<uid>": {"mode": ...}}  — ops_feedback 와 동일 패턴.
-_COST_MODE_FILE = _DIR / "api_cost_mode.json"
-_COST_MODES = ("h", "d", "m", "total")
-_cost_mode: dict = {"_default": {"mode": "h"}}
-
-
-def _cost_key(uid=None) -> str:
-    return str(int(uid)) if uid is not None else "_default"
-
-
-def _load_cost_mode():
-    global _cost_mode
-    try:
-        if _COST_MODE_FILE.exists():
-            d = json.loads(_COST_MODE_FILE.read_text(encoding="utf-8"))
-            if isinstance(d, dict):
-                _cost_mode = {k: v for k, v in d.items()
-                              if isinstance(v, dict) and v.get("mode") in _COST_MODES}
-                _cost_mode.setdefault("_default", {"mode": "h"})
-    except Exception:
-        pass
-
-
-def cost_display_mode(uid=None) -> str:
-    """프로필(uid)별 비용 표시 모드. 미설정 시 _default(기본 'h')."""
-    st = _cost_mode.get(_cost_key(uid)) or _cost_mode.get("_default") or {}
-    mode = st.get("mode", "h")
-    return mode if mode in _COST_MODES else "h"
-
-
-def set_cost_display_mode(mode: str, uid=None) -> str:
-    """비용 표시 모드 변경 — 프로필(uid)별. uid=None 이면 기본값. 재시작 불필요."""
-    global _cost_mode
-    if mode not in _COST_MODES:
-        raise ValueError(f"잘못된 비용 표시 모드: {mode!r} (가능: {_COST_MODES})")
-    _cost_mode[_cost_key(uid)] = {"mode": mode, "since": datetime.now().isoformat()}
-    try:
-        _COST_MODE_FILE.write_text(json.dumps(_cost_mode, ensure_ascii=False, indent=2),
-                                   encoding="utf-8")
-    except Exception:
-        pass
-    return mode
+# (사장 지시 2026-07-21: API 비용 표시 모드 로직 제거 — 로컬 서버라 비용 표시 폐지.)
 
 
 # ── 모바일 알림 설정 — 프로필(계정)별 (사장 지시 2026-05-21) ──────────────────────
@@ -253,7 +212,6 @@ def _load():
 
 _load()
 _load_ops_feedback()
-_load_cost_mode()
 _load_notif_settings()
 if not _HIST.exists():
     _dflt = _get_state(None)
@@ -279,6 +237,24 @@ def get(key, default=None, uid=None):
     if key in p:
         return p[key]
     return getattr(config, key, default)
+
+
+# 지표 신호명 → QIW_* 튜닝키. main_swarm 2곳(루브릭·점수산정) + backtest/quant_ic 이 같은 표를
+# 각자 들고 있어 축을 추가할 때마다 갱신을 빠뜨렸다(2026-08-02 통합).
+QIW_KEYS = (("rsi", "QIW_RSI"), ("macd", "QIW_MACD"), ("adx", "QIW_ADX"), ("vwap", "QIW_VWAP"),
+            ("vol", "QIW_VOL"), ("mom", "QIW_MOM"), ("cmf", "QIW_CMF"), ("flow", "QIW_FLOW"),
+            ("high52", "QIW_HIGH52"), ("leadlag", "QIW_LEADLAG"), ("vol_surge", "QIW_VOLUME_SURGE"))
+
+
+def quant_weights(uid=None) -> dict:
+    """지표 가중치 {신호명: QIW 값} — tools.quant_score.compute_indicator_score 입력."""
+    return {sig: get(key, uid=uid) for sig, key in QIW_KEYS}
+
+
+def dim_weights(uid=None) -> dict:
+    """차원 가중치 {QUANT/NEWS/MACRO} — tools.quant_score.combine_dimensions 입력."""
+    return {"QUANT": get("DW_QUANT", uid=uid), "NEWS": get("DW_NEWS", uid=uid),
+            "MACRO": get("DW_MACRO", uid=uid)}
 
 
 def active(uid=None) -> dict:

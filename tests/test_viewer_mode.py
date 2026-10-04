@@ -24,7 +24,7 @@ def store(tmp_path, monkeypatch):
 
 def _create(store, username, mode="trading"):
     return store.upsert_user(
-        username, "Passw0rd!!xx", "", "", "", "",
+        username, "Passw0rd!!xx", "", "", "",
         "https://openapi.koreainvestment.com:9443", account_mode=mode,
     )
 
@@ -83,6 +83,12 @@ def test_admin_can_control_trading_even_if_mode_is_stale_viewer(monkeypatch):
     request = SimpleNamespace(state=SimpleNamespace(user_id=1))
     monkeypatch.setattr(app_module.auth_store, "is_admin", lambda uid: uid == 1)
     monkeypatch.setattr(app_module.auth_store, "is_viewer", lambda uid: True)
+    # 통합 계정(2026-07-20): _require_trading 은 활성 프로필 uid 를 반환한다. 라이브 DB
+    # 토글 상태에 의존하지 않도록 프로필 해석을 고정(uid1=실전 프로필 활성)한다.
+    monkeypatch.setattr(app_module.auth_store, "resolve_profile_uid", lambda uid: 1)
+    monkeypatch.setattr(app_module.auth_store, "get_user_credentials", lambda uid: {
+        "account_mode": "trading", "kis_app_key": "test", "kis_account_no": "test",
+        "kis_base_url": "https://openapi.koreainvestment.com:9443"})
 
     assert app_module._require_trading(request) == 1
 
@@ -96,6 +102,11 @@ async def test_admin_start_and_stop_endpoints_use_admin_uid(monkeypatch):
 
     monkeypatch.setattr(app_module.auth_store, "is_admin", lambda uid: uid == 1)
     monkeypatch.setattr(app_module.auth_store, "is_viewer", lambda uid: True)
+    # 통합 계정(2026-07-20): start/stop 은 활성 프로필로 라우팅 — 라이브 토글 비의존 고정.
+    monkeypatch.setattr(app_module.auth_store, "resolve_profile_uid", lambda uid: 1)
+    monkeypatch.setattr(app_module.auth_store, "get_user_credentials", lambda uid: {
+        "account_mode": "trading", "kis_app_key": "test", "kis_account_no": "test",
+        "kis_base_url": "https://openapi.koreainvestment.com:9443"})
 
     async def fake_start(uid, directive=None):
         calls.append(("start", uid, directive))

@@ -15,7 +15,7 @@ def store(tmp_path, monkeypatch):
 
 
 def test_delete_user_removes_row_and_sessions(store):
-    uid = store.upsert_user("u1", "Passw0rd!!xx", "AK", "AS", "OR",
+    uid = store.upsert_user("u1", "Passw0rd!!xx", "AK", "AS",
                             "5012345601", "https://openapi.koreainvestment.com:9443")
     tok = store.create_session(uid)
     assert store.lookup_session(tok) == uid
@@ -26,9 +26,9 @@ def test_delete_user_removes_row_and_sessions(store):
 
 
 def test_list_members_fields(store):
-    store.upsert_user("admin", "Passw0rd!!xx", "AK", "AS", "OR", "1",
+    store.upsert_user("admin", "Passw0rd!!xx", "AK", "AS", "1",
                        "https://openapivts.koreainvestment.com:29443", is_admin=True)
-    store.upsert_user("live1", "Passw0rd!!xx", "AK2", "AS2", "OR2", "2",
+    store.upsert_user("live1", "Passw0rd!!xx", "AK2", "AS2", "2",
                        "https://openapi.koreainvestment.com:9443")
     ms = {m["username"]: m for m in store.list_members()}
     assert ms["admin"]["is_admin"] is True and ms["admin"]["is_mock"] is True
@@ -37,7 +37,7 @@ def test_list_members_fields(store):
 
 
 def test_change_password_requires_current(store):
-    uid = store.upsert_user("u3", "OldPassw0rd!!", "AK", "AS", "OR", "9",
+    uid = store.upsert_user("u3", "OldPassw0rd!!", "AK", "AS", "9",
                             "https://openapi.koreainvestment.com:9443")
     with pytest.raises(ValueError):
         store.change_password(uid, "WRONG", "NewPassw0rd!!")
@@ -48,7 +48,7 @@ def test_change_password_requires_current(store):
 
 
 def test_update_credentials_recomputes_bidx(store):
-    uid = store.upsert_user("u4", "Passw0rd!!xx", "AK", "AS", "OR", "111",
+    uid = store.upsert_user("u4", "Passw0rd!!xx", "AK", "AS", "111",
                             "https://openapi.koreainvestment.com:9443")
     store.update_credentials(uid, kis_account_no="222", kis_app_secret="AS2")
     with store._connect() as c:

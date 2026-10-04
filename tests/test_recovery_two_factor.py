@@ -12,7 +12,7 @@ def store(tmp_path, monkeypatch):
                  ("_FERNET_RAW", None), ("_BIDX_KEY", None)]:
         monkeypatch.setattr(a, n, v, raising=False)
     a.init()
-    a.upsert_user("trader", "Passw0rd!!xx", "APPKEY1", "SECRET1", "ORK1",
+    a.upsert_user("trader", "Passw0rd!!xx", "APPKEY1", "SECRET1",
                   "5012345601", "https://openapi.koreainvestment.com:9443")
     return a
 

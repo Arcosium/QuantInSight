@@ -8,14 +8,7 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/**
- * Widget 전용 경량 HTTP 헬퍼. Hilt DI를 쓸 수 없는 AppWidgetProvider/RemoteViewsService에서
- * /api/balance 를 직접 호출한다. 동기 호출이므로 반드시 백그라운드 스레드에서 사용할 것.
- *
- * 사장 피드백 2026-05-16: Cloudflare Access 제거 → 앱 자체 로그인 세션 토큰을
- * TokenManager 와 동일한 SharedPreferences("arquant_auth"/"session_token")에서 직접 읽어
- * X-Session 헤더로 전송한다 (위젯은 Hilt 주입 불가라 prefs 직접 접근).
- */
+/** Read-only widgets use the Access cookie synchronized by the dashboard. */
 internal object WidgetHttp {
     private const val TAG = "WidgetHttp"
 
@@ -29,7 +22,7 @@ internal object WidgetHttp {
 
     private fun sessionToken(context: Context): String =
         context.getSharedPreferences("arquant_auth", Context.MODE_PRIVATE)
-            .getString("session_token", "")
+            .getString("cf_access_token", "")
             .orEmpty()
 
     private fun base(): String =
@@ -46,7 +39,7 @@ internal object WidgetHttp {
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", "ArQuant-Android-Widget/1.0")
-                .apply { if (token.isNotBlank()) header("X-Session", token) }
+                .apply { if (token.isNotBlank()) header("Cookie", "CF_Authorization=$token") }
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {

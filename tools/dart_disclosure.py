@@ -3,10 +3,10 @@ Arquant v1.0 - OpenDart Disclosure Crawler
 공시 데이터 크롤링. DART 인증키는 환경변수 OPENDART_API_KEY 로만 주입한다
 (config.OPENDART_API_KEY). 절대 소스/문서에 키 값을 박지 말 것.
 """
-import aiohttp, logging, os, re as _re
+import aiohttp, logging, re as _re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 logger = logging.getLogger("DART")
 DART_BASE = "https://opendart.fss.or.kr/api"
 
@@ -185,34 +185,6 @@ async def search_disclosures(corp_name: str = "", bgn_de: str = "", end_de: str 
             text=f"[DART 공시조회 에러] {e} — 시스템 리스크",
         )
 
-async def get_corp_financials(corp_code: str, bsns_year: int) -> DartResult:
-    """단순 재무제표 조회. DartResult 반환 (str() 하위 호환)."""
-    from config import OPENDART_API_KEY
-    if not OPENDART_API_KEY:
-        return DartResult(state=DART_STATE_QUERY_FAILED,
-                          text=f"[DART 재무] OPENDART_API_KEY 없음 — 조회 불가 (시스템 리스크)")
-    params = {"crtfc_key": OPENDART_API_KEY, "corp_code": corp_code,
-              "bsns_year": str(bsns_year), "reprt_code": "11011"}
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(f"{DART_BASE}/fnlttSinglAcnt.json", params=params, timeout=aiohttp.ClientTimeout(total=15)) as r:
-                data = await r.json()
-        if data.get("status") != "000":
-            return DartResult(state=DART_STATE_QUERY_FAILED,
-                              text=f"[DART 재무] API 오류: {data.get('message','')} — 시스템 리스크")
-        items = data.get("list", [])
-        if not items:
-            return DartResult(state=DART_STATE_NO_DISCLOSURE,
-                              text=f"[DART 재무제표] {bsns_year}년 | 항목 없음 — 특이사항 없음")
-        lines = [f"[DART 재무제표] {bsns_year}년 | {len(items)}항목\n"]
-        for it in items[:20]:
-            lines.append(f"  {it.get('account_nm','')}: {it.get('thstrm_amount','')}")
-        return DartResult(state=DART_STATE_OK, text="\n".join(lines))
-    except Exception as e:
-        return DartResult(state=DART_STATE_QUERY_FAILED,
-                          text=f"[DART 재무 에러] {e} — 시스템 리스크")
-
-
 # 사장 피드백 2026-05-15 (#7): 직전연도 요약재무상태표 + 손익계산서 + 최근 공시를 한 번에.
 # 핵심 계정만 골라 LLM 토큰 절약 (회계 전 계정을 다 보낼 필요는 없음).
 _BS_KEYS = ("자산총계", "부채총계", "자본총계", "유동자산", "유동부채", "비유동자산", "비유동부채")
@@ -390,28 +362,3 @@ async def get_financial_summary_by_stock_code(stock_code: str) -> DartResult:
         )
     return await get_financial_summary(corp_code)
 
-async def get_major_shareholder(corp_code: str) -> DartResult:
-    """대주주 현황 조회. DartResult 반환."""
-    from config import OPENDART_API_KEY
-    if not OPENDART_API_KEY:
-        return DartResult(state=DART_STATE_QUERY_FAILED,
-                          text="[DART 대주주] OPENDART_API_KEY 없음 — 조회 불가 (시스템 리스크)")
-    params = {"crtfc_key": OPENDART_API_KEY, "corp_code": corp_code}
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(f"{DART_BASE}/majorstock.json", params=params, timeout=aiohttp.ClientTimeout(total=15)) as r:
-                data = await r.json()
-        if data.get("status") != "000":
-            return DartResult(state=DART_STATE_QUERY_FAILED,
-                              text=f"[DART 대주주] API 오류: {data.get('message','')} — 시스템 리스크")
-        items = data.get("list", [])
-        if not items:
-            return DartResult(state=DART_STATE_NO_DISCLOSURE,
-                              text="[DART 대주주현황] 0명 — 특이사항 없음")
-        lines = [f"[DART 대주주현황] {len(items)}명\n"]
-        for sh in items[:10]:
-            lines.append(f"  {sh.get('nm','')}: {sh.get('bsis_posesn_stock_co','')}주 ({sh.get('bsis_posesn_stock_qota_rt','')}%)")
-        return DartResult(state=DART_STATE_OK, text="\n".join(lines))
-    except Exception as e:
-        return DartResult(state=DART_STATE_QUERY_FAILED,
-                          text=f"[DART 대주주 에러] {e} — 시스템 리스크")

@@ -21,6 +21,26 @@ def test_parse_sell_decisions_lowercase_ticker_upcased():
     assert ms._parse_sell_decisions("매도결정: aapl=전량") == {"AAPL": "전량"}
 
 
+def test_false_current_price_invalidates_llm_sell_directive():
+    """알테오젠 실제 349K인데 305K로 환각해 손절한 실사고를 재현한다."""
+    text = ("알테오젠(196170)\n현재가: 약 305,000원\n손절가를 하회하여 전량 매도\n"
+            "매도결정: 196170=전량")
+    directives = ms._parse_sell_decisions(text)
+    cleaned, conflicts = ms.sanitize_sell_directives_by_authoritative_prices(
+        text, directives,
+        [{"code": "196170", "name": "알테오젠", "cur_price": 349_000, "pnl_pct": 0.4}])
+    assert cleaned == {"196170": "보유"}
+    assert conflicts and conflicts[0]["claimed"] == 305_000
+
+
+def test_matching_current_price_keeps_llm_sell_directive():
+    text = "삼성전자(005930) 현재가(70,000원) — 추세 훼손\n매도결정: 005930=절반"
+    cleaned, conflicts = ms.sanitize_sell_directives_by_authoritative_prices(
+        text, ms._parse_sell_decisions(text),
+        [{"code": "005930", "name": "삼성전자", "cur_price": 70_500}])
+    assert cleaned == {"005930": "절반"} and conflicts == []
+
+
 # ── _parse_entry_directive ───────────────────────────────────────────────
 def test_entry_directive_market_default_when_absent():
     d = ms._parse_entry_directive("진입가 언급 없음", "005930")

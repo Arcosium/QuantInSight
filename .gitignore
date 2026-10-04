@@ -62,6 +62,7 @@ data/arquant_auth.db-shm
 data/.fernet.key
 # data/.active_account — 현재 활성(봇 구동) 계정 id (런타임 상태)
 data/.active_account
+/Auto_folio/data
 # data/.resume_on_boot — 코드 갱신 재시작 자동재개 마커
 data/.resume_on_boot
 # data/news_history.json — 뉴스 영속 캐시 (재시작 후 목록 유지)
@@ -168,3 +169,16 @@ data/3/trade_log.json
 data/4/trade_log.json
 data/strategy_state.json
 data/nxt_untradable.json
+
+# 계좌 equity·trade_log·전략상태 등 운영/금융 데이터 전체 — 절대 추적 금지(2026-06-26 히스토리 purge)
+data/
+
+# 계정 해지/마이그레이션 백업 (암호화 자격증명 포함 — 커밋 금지)
+backups/
+
+# APK 산출물 — 배포는 Google Drive(gdrive:apk/), git 에는 미포함 (63MB 바이너리)
+/QuantInSight.apk
+/data
+/.code-review-graph
+/backups
+arquant_mobile/app/src/main/java/com/arquant/mobile/data/ArQuantRepository.kt

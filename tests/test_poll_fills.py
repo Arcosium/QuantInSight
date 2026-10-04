@@ -87,8 +87,10 @@ def test_fill_confirmed_increments_and_announces(_fast_and_silent):
     assert fills[0]["trades_total"] == 1
 
 
-def test_market_closed_drops_silently(monkeypatch):
-    """해당 시장 마감 시: 미체결분 폴링을 조용히 종료 (메시지·카운트 없음)."""
+def test_market_closed_emits_close_message(monkeypatch):
+    """해당 시장 마감 시: 미체결분 폴링 종료 + 종결 메시지 1회 발화(상태 닫기). 체결 카운트는 0.
+    사장 지시 2026-06-16: 기존 '조용히 종료'는 '접수 후 확인 중'이 영영 안 닫혀(uid2 375500)
+    사용자가 상태를 알 수 없었다 → 종결 메시지를 명확히 띄운다(체결로 카운트하지는 않는다)."""
     monkeypatch.setattr(main_swarm, "_REVERIFY_DELAY_SEC", 0)
     monkeypatch.setattr(main_swarm, "_POLL_MAX_ATTEMPTS", 99)  # 상한이 아니라 '마감'으로 종료됨을 확인
     captured = []
@@ -105,8 +107,17 @@ def test_market_closed_drops_silently(monkeypatch):
     asyncio.run(o._poll_fills_until_confirmed(
         [{"ticker": "OXY", "side": "buy", "qty": 8}], baseline_holdings=[]))
 
-    assert o._trades_executed == 0
-    assert captured == [], "마감 종료 시에도 미체결 메시지를 띄우면 안 된다"
+    assert o._trades_executed == 0, "미체결은 체결로 카운트하지 않는다"
+    closes = [e for e in captured if e.get("type") == "trade_failed" and "OXY" in str(e.get("message", ""))]
+    assert len(closes) == 1, "마감 종료 시 종결 메시지를 정확히 1회 띄워 상태를 닫아야 한다"
+    assert ("종료" in closes[0]["message"]) or ("취소" in closes[0]["message"])
+
+
+def test_poll_close_message_formats():
+    m = main_swarm._poll_close_message("375500", "sell", 63, "market_close")
+    assert "375500" in m and "63" in m and ("마감" in m or "취소" in m)
+    m2 = main_swarm._poll_close_message("AAPL", "buy", 2, "max_attempts")
+    assert "AAPL" in m2 and "종료" in m2
 
 
 def test_baseline_prevents_false_positive(_fast_and_silent):

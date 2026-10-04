@@ -62,6 +62,71 @@ def sma_breakout_signal(closes: List[float], i: int, lookback: int = 20) -> bool
     return closes[i - 1] <= prev_sma and closes[i] > sma
 
 
+# ── 진입 적합 필터 (결정론 매수 규칙 — 라이브 퀀트 프롬프트와 동형) ──────────
+# 라이브 계량분석은 아래 3개 하드필터로 추격·고변동·과매수 진입을 막는다(quant_report
+# "매수 필터 위반: 변동성 149.6%" / "VWAP 대비 16% 이격" 사례). config 의 동명 키가
+# 0(off) 이면 이 기본선을, 0보다 크면 그 값을 상한으로 쓴다 → ops 가 키를 조이면
+# 백테스트도 즉시 반응(2026-06-15: 엔진이 키를 무시하던 피드백 단절 수정).
+LIVE_BASELINE_VOL_PCT = 100.0   # 연환산 변동성 상한
+LIVE_BASELINE_RSI     = 70.0    # RSI(14) 과매수 상한
+LIVE_BASELINE_EXT_PCT = 10.0    # SMA(lookback) 대비 이격 상한(추격매수 회피)
+
+
+def _annual_vol_pct(closes: List[float], i: int, lookback: int) -> float:
+    """i 일까지 lookback 일 로그수익률의 표준편차 × √252 × 100 (연환산 변동성 %)."""
+    if i < lookback:
+        return 0.0
+    rets = [math.log(closes[j] / closes[j - 1])
+            for j in range(i - lookback + 1, i + 1)
+            if closes[j - 1] > 0 and closes[j] > 0]
+    if len(rets) < 2:
+        return 0.0
+    mean = sum(rets) / len(rets)
+    var = sum((r - mean) ** 2 for r in rets) / len(rets)
+    return math.sqrt(var) * math.sqrt(252) * 100.0
+
+
+def _rsi(closes: List[float], i: int, period: int = 14) -> float:
+    """단순 RSI(14). 데이터 부족 시 중립 50."""
+    if i < period:
+        return 50.0
+    gains = losses = 0.0
+    for j in range(i - period + 1, i + 1):
+        ch = closes[j] - closes[j - 1]
+        if ch >= 0:
+            gains += ch
+        else:
+            losses -= ch
+    if losses == 0:
+        return 100.0
+    rs = (gains / period) / (losses / period)
+    return 100.0 - 100.0 / (1.0 + rs)
+
+
+def _price_extension_pct(closes: List[float], i: int, lookback: int) -> float:
+    """현재가가 SMA(lookback) 대비 몇 % 위인지(이격도). 음수면 0 으로 본다."""
+    if i < lookback:
+        return 0.0
+    sma = sum(closes[i - lookback:i]) / lookback
+    if sma <= 0:
+        return 0.0
+    return max(0.0, (closes[i] / sma - 1.0) * 100.0)
+
+
+def passes_entry_filters(closes: List[float], i: int, lookback: int, params: dict) -> bool:
+    """결정론 매수 적합 필터. 고변동·과매수·과이격이면 False(라이브 매수회피와 동형)."""
+    vol_ceil = params.get("MAX_BUY_VOLATILITY_PCT") or LIVE_BASELINE_VOL_PCT
+    rsi_ceil = params.get("RSI_OVERBOUGHT_SKIP") or LIVE_BASELINE_RSI
+    ext_ceil = params.get("MAX_PRICE_EXTENSION_PCT") or LIVE_BASELINE_EXT_PCT
+    if _annual_vol_pct(closes, i, lookback) > vol_ceil:
+        return False
+    if _rsi(closes, i) > rsi_ceil:
+        return False
+    if _price_extension_pct(closes, i, lookback) > ext_ceil:
+        return False
+    return True
+
+
 # ── 백테스트 ──────────────────────────────────────────────────────────────
 def run_backtest(params: dict,
                  prices: Dict[str, List[dict]],
@@ -126,6 +191,8 @@ def run_backtest(params: dict,
                 continue
             if not sma_breakout_signal(closes_by_code[code], k, lookback):
                 continue
+            if not passes_entry_filters(closes_by_code[code], k, lookback, p):
+                continue
             px = closes_by_code[code][k]
             budget = cash * p["PER_ORDER_BUDGET_RATIO"]
             qty = int(budget // px)
@@ -156,8 +223,12 @@ def _metrics(name, start, final, curve, trades, wins) -> dict:
         peak = max(peak, v)
         if peak > 0:
             mdd = min(mdd, v / peak - 1.0)
-    # 일간 수익률 표준편차 기반 거친 변동성 (연율화 X — 상대비교용).
-    rets = [curve[i] / curve[i - 1] - 1.0 for i in range(1, len(curve)) if curve[i - 1]]
+    # 샤프*는 **로그수익률** 기반 — 산술평균을 쓰면 고변동 구간에서 변동성 드래그로
+    # '음수 복리수익 + 양수 샤프'라는 모순이 나와 돈 잃는 설정을 '위험조정 양호'로
+    # 오인하게 만든다(2026-06-15 토요일 리뷰 -12.5%/+0.77 사례). 로그수익 평균의
+    # 부호 = log(final/start)의 부호 = total_return 의 부호 → 항상 일치한다.
+    rets = [math.log(curve[i] / curve[i - 1])
+            for i in range(1, len(curve)) if curve[i - 1] > 0 and curve[i] > 0]
     mean = sum(rets) / len(rets) if rets else 0.0
     var = sum((r - mean) ** 2 for r in rets) / len(rets) if rets else 0.0
     vol = math.sqrt(var)

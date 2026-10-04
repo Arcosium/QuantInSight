@@ -47,6 +47,35 @@ def _now_kst() -> str:
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _now_dt_kst() -> datetime:
+    return datetime.now(KST)
+
+
+_DAY_ONLY_WORDS = ("오늘", "금일", "당일")
+_CONTINUING_WORDS = ("오늘부터", "금일부터", "앞으로", "계속", "지속", "상시", "항상")
+
+
+def _is_expired_day_directive(directive: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    """'오늘/금일/당일' 한정 지시가 저장일을 넘겼는지 판정한다.
+
+    기록은 감사 목적으로 그대로 보존하고 프롬프트 주입만 중단한다. '오늘부터 계속'처럼 지속
+    의사가 함께 적힌 문장은 만료시키지 않는다.
+    """
+    text = str((directive or {}).get("text") or "")
+    if not any(w in text for w in _DAY_ONLY_WORDS):
+        return False
+    if any(w in text for w in _CONTINUING_WORDS):
+        return False
+    try:
+        created = datetime.strptime(str(directive.get("ts") or ""), "%Y-%m-%d %H:%M:%S").replace(tzinfo=KST)
+    except (TypeError, ValueError):
+        return False  # 생성시각 불명은 임의 만료 금지
+    current = now or _now_dt_kst()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=KST)
+    return current.astimezone(KST).date() > created.date()
+
+
 def _profile_dir(uid: int) -> Path:
     d = _PROFILES_DIR / str(int(uid))
     d.mkdir(parents=True, exist_ok=True)
@@ -154,7 +183,7 @@ def build_orchestrator_directive_block(uid: Optional[int]) -> str:
     """
     if uid is None:
         return ""
-    directives = load(uid)
+    directives = [d for d in load(uid) if not _is_expired_day_directive(d)]
     if not directives:
         return ""
     lines = ["## 사장님 상시 지침 (당신 계정 한정 — 참고 지침: 다른 신호·리스크 게이트와 균형 있게 반영)"]

@@ -72,7 +72,7 @@ def _mk_cyc(sleeve_sell_proposals=None):
 
 @pytest.fixture(autouse=True)
 def _stub_holding_period(monkeypatch):
-    monkeypatch.setattr(main_swarm.cycle_store, "get_holding_period", lambda code: None)
+    monkeypatch.setattr(main_swarm.cycle_store, "get_holding_period", lambda code, uid=0: None)
 
 
 def _run(sm, cyc):

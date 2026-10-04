@@ -14,7 +14,7 @@ from __future__ import annotations
 import json, logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 logger = logging.getLogger("WEEKLY")
 KST = timezone(timedelta(hours=9))
@@ -83,6 +83,49 @@ def _run_current_backtest(uid=None) -> Dict[str, Any]:
                 "sharpe_like": m["sharpe_like"],
                 "trades": m["trades"],
                 "win_rate_pct": m["win_rate_pct"]}
+    except Exception as e:
+        return {"available": False, "reason": str(e)}
+
+
+def _run_walkforward(uid=None) -> Dict[str, Any]:
+    """현재 설정으로 롤링 아웃오브샘플(워크포워드) — 단일 백테스트가 '한 시기의 운'인지 본다.
+    반환 집계(구간 일관성·최악 구간). 2026-06-15 ROI#1."""
+    try:
+        import config
+        import runtime
+        from backtest.engine import load_prices
+        from backtest.walkforward import walk_forward
+        prices = load_prices()
+        if not prices:
+            return {"available": False, "reason": "no_daily_csv"}
+        params = {k: runtime.get(k, uid=uid) for k in config.STRATEGY_TUNABLE_KEYS}
+        agg = walk_forward(params, prices, test_days=20, warmup_days=40)["aggregate"]
+        agg["available"] = agg.get("n_windows", 0) > 0
+        return agg
+    except Exception as e:
+        return {"available": False, "reason": str(e)}
+
+
+def _run_quant_ic(uid=None) -> Dict[str, Any]:
+    """퀀트점수 지표의 예측력(IC) 측정 — P1, 2026-08-02.
+
+    기존 백테스트(고정 SMA 프록시)는 종목 선정을 평가하지 못한다. 이건 반대편 —
+    **실제 선정에 쓰는 결정론 신호**가 후속 수익률을 예측했는지 축별로 잰다. 운용지원실장의
+    QIW_* 조정에 정량 근거를 준다. 프롬프트 비대화를 막으려고 축별 상세는 ic_mean 만 남긴다."""
+    try:
+        from backtest.quant_ic import run_ic
+        r = run_ic(uid=uid, max_names=250, dates=30, step=5)
+        if not r.get("available"):
+            return r
+        return {"available": True, "period": r["period"], "n_dates": r["n_dates"],
+                "names_per_date": r["names_per_date"],
+                "composite": r["composite"],
+                "axis_ic_h20": {ax: (d.get("h20") or {}).get("ic_mean")
+                                for ax, d in (r.get("by_axis") or {}).items()},
+                "weights_used": r["weights_used"],
+                "sign_conflicts": r.get("sign_conflicts") or [],
+                "excluded_axes": r.get("excluded_axes"),
+                "note": r["note"]}
     except Exception as e:
         return {"available": False, "reason": str(e)}
 
@@ -156,10 +199,32 @@ def build_review_summary(uid=None) -> Dict[str, Any]:
         "equity_first": eq_first, "equity_last": eq_last,
         "equity_return_pct_adj": equity_return,
         "backtest": _run_current_backtest(uid=uid),
+        "walkforward": _run_walkforward(uid=uid),   # ROI#1 — 롤링 아웃오브샘플 성과 안정성
+        "quant_ic": _run_quant_ic(uid=uid),         # P1 — 지표 가중치(QIW_*)의 실측 예측력
+        "alpha_tags": _alpha_tags(uid),             # P2 — 알파 계열별 실현 성과
+        "shadow_profiles": _shadow_profiles(uid),   # P3 — 프로필 간 성과·상관(저비용 알파풀)
         # 사장 지시 2026-06-09 #7: 평일 사이클에서 회부된 weekly-tier 제안(점수엔진·구조 파라미터) —
         # 토요일 워커가 백테스트와 함께 재평가해 적용 여부 결정.
         "deferred_weekly_proposals": _list_deferred(uid),
     }
+
+
+def _alpha_tags(uid=None) -> Dict[str, Any]:
+    """알파 계열별 실현 성과 (P2) — 어떤 알파가 이 계정에서 실제로 돈을 벌었나."""
+    try:
+        from infra import trade_reflections
+        return trade_reflections.tag_stats(int(uid)) if uid is not None else {}
+    except Exception:
+        return {}
+
+
+def _shadow_profiles(uid=None) -> Dict[str, Any]:
+    """다른 계정(모의 포함) 프로필과의 성과·상관 비교 (P3) — 저상관·고성과 파라미터 조합 발굴."""
+    try:
+        from infra import shadow_profiles
+        return shadow_profiles.compare(base_uid=uid)
+    except Exception as e:
+        return {"available": False, "reason": str(e)}
 
 
 def _list_deferred(uid=None):
@@ -194,6 +259,38 @@ def build_review_message(summary: Dict[str, Any]) -> str:
             f"매매 {bt.get('trades', 0)}건 · 승률 {bt.get('win_rate_pct', 0):.0f}%")
     else:
         lines.append("• 현재 설정 백테스트: 데이터 부족(일봉 CSV 없음)")
+    wf = summary.get("walkforward") or {}
+    if wf.get("available"):
+        lines.append(
+            f"• 워크포워드({wf.get('n_windows', 0)}구간 아웃오브샘플): 평균 {wf.get('mean_return_pct', 0):+.1f}% · "
+            f"양(+)구간 {wf.get('pct_positive', 0)*100:.0f}% · 최악구간 {wf.get('worst_return_pct', 0):+.1f}%/"
+            f"MDD {wf.get('worst_mdd_pct', 0):.1f}% — 일관성↓면 과적합 의심")
+    qi = summary.get("quant_ic") or {}
+    if qi.get("available"):
+        c20 = (qi.get("composite") or {}).get("h20") or {}
+        _ax = {a: v for a, v in (qi.get("axis_ic_h20") or {}).items() if v is not None}
+        _rank = sorted(_ax.items(), key=lambda kv: -kv[1])
+        lines.append(
+            f"• 퀀트점수 예측력 IC(20일, {qi.get('n_dates')}개 시점 × 평균 {qi.get('names_per_date')}종목): "
+            f"{c20.get('ic_mean', 0):+.3f} · IR {c20.get('ir')} · 양(+)시점 {(c20.get('hit_rate') or 0)*100:.0f}%")
+        if _rank:
+            lines.append("• 축별 예측력 최고 " + ", ".join(f"{a} {v:+.3f}" for a, v in _rank[:3])
+                         + " / 최저 " + ", ".join(f"{a} {v:+.3f}" for a, v in _rank[-3:]))
+        for c in (qi.get("sign_conflicts") or []):
+            lines.append(f"  ⚠️ 가중치 부호 재검토 — {c}")
+    else:
+        lines.append(f"• 퀀트점수 예측력 IC: 측정 불가({qi.get('reason', '데이터 부족')})")
+    sp = summary.get("shadow_profiles") or {}
+    if sp.get("available"):
+        try:
+            from infra import shadow_profiles
+            lines.extend(shadow_profiles.summary_lines(sp))
+        except Exception:
+            pass
+    at = summary.get("alpha_tags") or {}
+    if at:
+        lines.append("• 알파 계열별 실현 성과: " + " / ".join(
+            f"{t} {s['n']}건 승률 {s['win_rate']:.0f}% 평균 {s['avg_ret_pct']:+.2f}%" for t, s in at.items()))
     lines.append("→ 운용지원실장이 위 통계로 전략 파라미터 조정안을 분석 중입니다. "
                  "실제 적용 내역은 이어지는 🛠 OPS 메시지로 직접 보고됩니다.")
     return "\n".join(lines)
@@ -229,7 +326,10 @@ def trigger_if_due(uid=None, is_admin: bool = False):
                        + json.dumps(_deferred, ensure_ascii=False, indent=2))
     directive = (
         "[주간 피드백 루프] 다음은 지난 7일간의 ArQuant 운영 통계입니다. "
-        "이 데이터를 검토하여 ① 퀀트점수 임계값·지표 가중치, ② 사후관리실장 매도 룰, "
+        "이 데이터를 검토하여 ① 퀀트점수 임계값·지표 가중치(**quant_ic 블록의 실측 IC 를 근거로**: "
+        "sign_conflicts 에 오른 축은 해당 QIW_* 의 부호/크기를 줄이거나 뒤집는 것을 검토하고, "
+        "axis_ic_h20 이 높은 축은 가중치를 키우십시오. 단 n_dates 가 작거나 IC 절대값이 0.02 미만이면 "
+        "잡음이니 건드리지 마십시오), ② 사후관리실장 매도 룰, "
         "③ 후보 사전 필터·사이징 등에 대해 **이 프로필에 적용할 전략 튜닝 "
         "파라미터(param_overrides)** 조정안을 제시하십시오. 코드 자가수정·서버 재시작은 하지 않습니다. "
         "변경이 필요 없으면 솔직하게 답하세요. (토요일 트리거이므로 weekly-tier 구조 파라미터도 즉시 적용됩니다.)"

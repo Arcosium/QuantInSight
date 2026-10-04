@@ -22,7 +22,7 @@ def test_schema_has_kis_account_no_bidx(store):
 
 
 def test_upsert_sets_account_bidx(store):
-    uid = store.upsert_user("u1", "Passw0rd!!xx", "AK", "AS", "OR",
+    uid = store.upsert_user("u1", "Passw0rd!!xx", "AK", "AS",
                             "5012345601", "https://openapi.koreainvestment.com:9443")
     with store._connect() as c:
         row = c.execute("SELECT kis_account_no_bidx FROM users WHERE id=?",
@@ -31,7 +31,7 @@ def test_upsert_sets_account_bidx(store):
 
 
 def test_migration_backfills_blank_account_bidx_idempotent(store):
-    uid = store.upsert_user("u2", "Passw0rd!!xx", "AK", "AS", "OR",
+    uid = store.upsert_user("u2", "Passw0rd!!xx", "AK", "AS",
                             "777888999", "https://openapi.koreainvestment.com:9443")
     with store._connect() as c:
         c.execute("UPDATE users SET kis_account_no_bidx='' WHERE id=?", (uid,))
@@ -47,7 +47,7 @@ def test_migration_backfills_blank_account_bidx_idempotent(store):
 
 def test_migration_skips_corrupt_account_enc_row_preserved(store):
     """corrupt kis_account_no_enc → acct_bidx 카운트 안됨, 행(kis_account_no_bidx='') 보존."""
-    uid = store.upsert_user("u3", "Passw0rd!!xx", "AK", "AS", "OR",
+    uid = store.upsert_user("u3", "Passw0rd!!xx", "AK", "AS",
                             "1112223334", "https://openapi.koreainvestment.com:9443")
     # kis_account_no_enc 를 유효하지 않은 Fernet 토큰으로 교체, bidx 초기화
     with store._connect() as c:

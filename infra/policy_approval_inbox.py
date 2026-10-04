@@ -47,8 +47,16 @@ def _save(uid: int, items: List[Dict[str, Any]]) -> None:
 
 def enqueue(uid: int, key: str, proposed_value: Any, current_value: Any,
             rationale: str = "") -> Optional[Dict[str, Any]]:
-    """정책 키 변경 제안을 승인 대기함에 적재. 같은 key 가 있으면 최신값으로 갱신(pending 으로 리셋)."""
+    """정책 키 변경 제안을 승인 대기함에 적재. 같은 key 가 있으면 최신값으로 갱신(pending 으로 리셋).
+
+    사장 지시 2026-07-21: proposed == current(예: true→true) 는 실제 변경이 아니므로 적재하지 않고,
+    이미 쌓여 있던 같은 key 의 no-op pending 항목도 제거한다(혼란스러운 무변경 승인 요청 정리)."""
     items = _load(uid)
+    if proposed_value == current_value:
+        pruned = [i for i in items if i.get("key") != key]
+        if len(pruned) != len(items):
+            _save(uid, pruned)
+        return None
     item = {
         "id": key, "key": key, "proposed_value": proposed_value,
         "current_value": current_value, "rationale": rationale or "",
@@ -65,7 +73,10 @@ def enqueue(uid: int, key: str, proposed_value: Any, current_value: Any,
 def list_pending(uid: Optional[int]) -> List[Dict[str, Any]]:
     if uid is None:
         return []
-    return list(reversed([i for i in _load(uid) if i.get("status") == "pending"]))
+    # no-op(proposed == current) 항목은 표시하지 않는다 — 과거에 쌓인 true→true 류 정리(사장 지시 2026-07-21).
+    return list(reversed([i for i in _load(uid)
+                          if i.get("status") == "pending"
+                          and i.get("proposed_value") != i.get("current_value")]))
 
 
 def approve(uid: int, key: str) -> bool:

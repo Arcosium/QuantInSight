@@ -16,10 +16,10 @@ def _mk_user(conn, username, is_admin=0):
     now = time.time()
     conn.execute(
         "INSERT INTO users (username, password_enc, password_hash, kis_app_key_enc, "
-        "kis_app_secret_enc, deepseek_api_key_enc, kis_account_no_enc, kis_base_url, "
+        "kis_app_secret_enc, kis_account_no_enc, kis_base_url, "
         "dart_key_enc, label, created_at, last_login_at, last_validated_at, is_admin) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (username, "", "h", "", "", "", "", "", "", username, now, now, 0.0, is_admin))
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (username, "", "h", "", "", "", "", "", username, now, now, 0.0, is_admin))
 
 
 def test_reject_promote_non_admin_username(tmp_path, monkeypatch):

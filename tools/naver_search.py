@@ -3,7 +3,6 @@ NPS Swarm v1.0 - Naver Real-time Search Tool
 Uses Playwright for headless browser scraping of Naver Finance & News.
 """
 import asyncio
-from typing import Optional
 from playwright.async_api import async_playwright
 
 

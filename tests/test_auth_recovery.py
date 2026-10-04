@@ -2,14 +2,14 @@ import json
 import pytest
 
 def test_find_username_by_factors(fresh_auth):
-    fresh_auth.upsert_user("erin", "P@ss12345!", "AK1", "AS1", "OR1", "1-1", "", "", "")
+    fresh_auth.upsert_user("erin", "P@ss12345!", "AK1", "AS1", "1-1", "", "", "")
     assert fresh_auth.find_username_by_factors("1-1", "AS1") == "erin"
     assert fresh_auth.find_username_by_factors(" 1-1 ", "AS1") == "erin"  # norm
     assert fresh_auth.find_username_by_factors("1-1", "WRONG") is None
     assert fresh_auth.find_username_by_factors("", "AS1") is None
 
 def test_reset_password_by_factors(fresh_auth):
-    fresh_auth.upsert_user("fred", "OldP@ss123", "AK2", "AS2", "OR2", "1-1", "", "", "")
+    fresh_auth.upsert_user("fred", "OldP@ss123", "AK2", "AS2", "1-1", "", "", "")
     assert fresh_auth.reset_password_by_factors(
         "fred", "1-1", "AS2", "N3wP@ssword!") is True
     assert fresh_auth.verify_password("fred", "N3wP@ssword!")["username"] == "fred"
@@ -51,7 +51,7 @@ def test_audit_ts_is_iso8601_utc(fresh_auth):
 
 def test_reset_password_policy_checked_before_factors_no_oracle(fresh_auth):
     import pytest
-    fresh_auth.upsert_user("gus", "OldP@ss123", "AKg", "ASg", "ORg", "1-1", "", "", "")
+    fresh_auth.upsert_user("gus", "OldP@ss123", "AKg", "ASg", "1-1", "", "", "")
     # weak pw + WRONG factors → ValueError (NOT False) — same as weak pw + right factors,
     # so a weak-pw probe cannot distinguish factor correctness (oracle closed)
     with pytest.raises(ValueError):

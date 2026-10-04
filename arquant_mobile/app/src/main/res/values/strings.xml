@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ArQuant</string>
+    <string name="app_name">QuantInSight</string>
     <string name="notif_channel_name">ArQuant 실시간</string>
     <string name="notif_channel_desc">거래 체결·에이전트 알림</string>
     <string name="widget_portfolio_desc">ArQuant 포트폴리오 (보유종목·수익률)</string>

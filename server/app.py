@@ -1,8 +1,8 @@
 """Arquant v1.0 - FastAPI Server"""
-import asyncio, logging, os
+import asyncio, logging, os, signal
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, Literal
 import aiohttp
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -16,18 +16,25 @@ from infra.user_context import REGISTRY
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("APP")
+# 좀비 자식 자동 수거 — ops_support_worker / weekly_review / restart_server 는 전부
+# fire-and-forget Popen 이라 아무도 wait() 하지 않는다. 서버가 무재부팅으로 며칠 돌면
+# <defunct> python3.11 이 그대로 남는다(2026-08-02 관측: 1일 6시간 상주).
+# 이 프로세스는 자식의 종료코드를 읽는 코드가 하나도 없으므로(subprocess.run/wait 미사용)
+# 커널에 수거를 맡기는 것이 가장 짧고 확실하다. 자식 결과를 읽어야 하는 코드가 생기면
+# 이 줄을 지우고 해당 spawn 만 wait 스레드로 바꿔라.
+signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 # KIS 실전 OpenAPI 기본 URL — 등록/검증 기본값. 한 곳에서 관리해 불일치를 막는다.
 DEFAULT_KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
 MOCK_KIS_BASE_URL = "https://openapivts.koreainvestment.com:29443"
 ALLOWED_KIS_BASE_URLS = frozenset({DEFAULT_KIS_BASE_URL, MOCK_KIS_BASE_URL})
-app = FastAPI(title="ArQuant v1.0", version="1.0.0")
+app = FastAPI(title="QuantInSight", version="2.0.0")
 # 계정 프로필 디렉토리 루트. 모듈 상수로 둬서 테스트가 격리(monkeypatch)할 수 있게 한다.
 # (과거 엔드포인트가 실경로를 직접 계산해 테스트가 실데이터 profiles/<uid> 를 삭제하던 버그 방지)
 _PROFILES_DIR = Path(__file__).resolve().parent.parent / "data" / "profiles"
 # 사장 피드백 2026-05-20: 배포 전 보안 점검 — wildcard + credentials 동시 허용은 안티패턴.
 # 프로덕션 도메인 + 로컬 개발(에뮬레이터/localhost)만 허용. 추가 origin은 ARQUANT_EXTRA_ORIGINS(콤마 구분)로 주입.
 _ALLOWED_ORIGINS = [
-    "https://arquant.ai-ve.uk",
+    "https://quantinsight.ai-ve.uk",  # 주 도메인 (ArQuant→QuantInSight 개명, 2026-07-20)
     "http://localhost:8500", "http://127.0.0.1:8500",
     "http://10.0.2.2:8500",  # Android emulator host loopback
 ]
@@ -36,7 +43,7 @@ if _extra:
     _ALLOWED_ORIGINS += [o.strip() for o in _extra.split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=_ALLOWED_ORIGINS, allow_credentials=True,
                    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                   allow_headers=["Content-Type", "Authorization", "X-Session"])
+                   allow_headers=["Content-Type", "Cf-Access-Jwt-Assertion"])
 
 
 @app.exception_handler(auth_store.FernetKeyLost)
@@ -46,40 +53,29 @@ async def _fernet_lost_handler(request: Request, exc: auth_store.FernetKeyLost):
         "error": str(exc), "code": "fernet_key_lost",
         "hint": "data/.fernet.key 백업을 복구하거나 ARQUANT_FERNET_KEY 환경변수로 키를 주입한 뒤 서버를 재시작하세요."})
 
-# 사장 피드백 2026-05-16: Cloudflare Access 제거 → 앱 자체 로그인(세션 쿠키/X-Session).
-# 인증 불필요 경로 — SPA 셸(/)은 자체적으로 로그인 화면을 띄우므로 공개.
-_PUBLIC_PATHS = {"/health", "/api/health", "/", "/favicon.ico",
-                 "/api/login", "/api/register", "/api/auth_status",
-                 "/api/check_username", "/api/recover_id", "/api/recover_password"}
-_PUBLIC_PREFIXES = ("/static/",)
-
-
-# 사장 피드백 2026-05-16: 세션 쿠키 Secure 강화 (HYFE COOKIE_SECURE env 패턴).
-# 기본 켜짐 — https 터널에선 쿠키, 로컬 http에선 X-Session 헤더(이중화)로 동작.
-_COOKIE_SECURE = os.getenv("ARQUANT_COOKIE_SECURE", "1").lower() in ("1", "true", "yes")
-
-
-def _session_token(request: Request) -> str:
-    return (request.cookies.get(auth_store.SESSION_COOKIE)
-            or request.headers.get("X-Session") or "").strip()
-
+# Cloudflare Access owns sign-in. The origin verifies signature, audience and owner.
+from infra import cloudflare_access
 
 @app.middleware("http")
 async def app_auth(request: Request, call_next):
-    path = request.url.path
-    if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+    if request.url.path == "/health":
         return await call_next(request)
-    if not path.startswith("/api/"):
-        return await call_next(request)  # non-API (정적/기타)는 통과
-    uid = auth_store.lookup_session(_session_token(request))
-    if uid is None:
-        return JSONResponse(status_code=401,
-                            content={"error": "로그인이 필요합니다", "code": "unauthorized"})
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        if origin and origin != "https://quantinsight.ai-ve.uk":
+            return JSONResponse(status_code=403, content={"error": "허용되지 않은 요청 출처"})
+    try:
+        uid, _ = await asyncio.to_thread(cloudflare_access.verify,
+            request.headers.get("Cf-Access-Jwt-Assertion", ""))
+    except cloudflare_access.AccessNotConfigured:
+        return JSONResponse(status_code=503, content={"error": "접속 보호 설정 중입니다"})
+    except PermissionError:
+        return JSONResponse(status_code=401, content={"error": "Cloudflare Access 인증이 필요합니다"})
     request.state.user_id = uid
     return await call_next(request)
 
 
-# ─── 자격증명 검증 (등록 시 — HYFE가 WQB/Gemini를 검증하던 것과 동치) ──────────
+# ─── 자격증명 검증 ────────────────────────────────────────────────────────────
 async def _validate_kis(app_key: str, app_secret: str, base_url: str) -> tuple[bool, str]:
     base_url = (base_url or DEFAULT_KIS_BASE_URL).rstrip("/")
     if base_url not in ALLOWED_KIS_BASE_URLS:
@@ -97,29 +93,6 @@ async def _validate_kis(app_key: str, app_secret: str, base_url: str) -> tuple[b
         return False, f"KIS 연결 실패: {e}"
 
 
-async def _validate_deepseek(api_key: str) -> tuple[bool, str]:
-    try:
-        from infra.deepseek_client import chat_completion
-        await chat_completion(
-            api_key=api_key, model="deepseek-v4-flash",
-            messages=[{"role": "user", "content": "Reply only OK."}],
-            max_tokens=4, temperature=0.0, timeout_sec=15, thinking=False,
-        )
-        return True, "ok"
-    except Exception as e:
-        return False, f"DeepSeek 연결 실패: {e}"
-
-
-def _issue_session(uid: int, remember: bool) -> JSONResponse:
-    """HYFE _issue_session(app.py:257-271) 패턴 — 불투명 토큰 쿠키 발급.
-    token은 body에도 실어 쿠키 못 쓰는 클라이언트(모바일)가 X-Session으로 쓰게 한다."""
-    token = auth_store.create_session(uid)
-    resp = JSONResponse(content={"ok": True, "user_id": uid, "token": token})
-    kw = dict(httponly=True, samesite="lax", secure=_COOKIE_SECURE, path="/")
-    if remember:
-        kw["max_age"] = auth_store.SESSION_TTL_SEC
-    resp.set_cookie(auth_store.SESSION_COOKIE, token, **kw)
-    return resp
 
 
 # ─── Phase 2 멀티테넌트 — 유저별 매매 루프 라이프사이클 ─────────────────────────
@@ -127,6 +100,12 @@ def _issue_session(uid: int, remember: bool) -> JSONResponse:
 # 독립 매매 루프를 돈다. 한 유저의 start/stop 이 다른 유저에게 영향을 주지 않는다.
 async def _start_uid(uid: int, directive=None) -> None:
     ctx = REGISTRY.get_or_create(uid)
+    from config import PAPER_ONLY
+    kind = auth_store.profile_kind_of(ctx.creds)
+    if kind not in auth_store.PROFILE_KIND_ORDER:
+        raise HTTPException(403, "KIS 실전 또는 모의 프로필이 필요합니다")
+    if PAPER_ONLY and kind == auth_store.PROFILE_KIS_REAL:
+        raise HTTPException(409, "실전 매매는 정지되어 있습니다. KIS 모의투자 프로필을 선택하세요")
     if ctx.task and not ctx.task.done():
         raise HTTPException(409, "이미 감시 중")
     from infra import user_paths
@@ -285,34 +264,20 @@ class Req(BaseModel):
     directive: Optional[str] = None
 class CeoReq(BaseModel):
     message: str
-class CostModeReq(BaseModel):
-    mode: str                       # h | d | m | total — 우상단 API 비용 표시 합산 모드(프로필별)
-class RegisterReq(BaseModel):
-    username: str                   # 사용자가 정하는 아이디 (중복 불가)
-    password: str                   # 10자 이상 + 특수문자 1개 이상
-    account_mode: str = "trading"
-    deepseek_api_key: str = ""
-    kis_app_key: str = ""
-    kis_app_secret: str = ""
-    kis_account_no: str = ""
-    kis_base_url: str = DEFAULT_KIS_BASE_URL
-    dart_key: str = ""              # 선택 — 없으면 공시 분석 생략
-    label: str = ""
-    remember: bool = True
-class LoginReq(BaseModel):
-    username: str
-    password: str
-    remember: bool = True
+class FundamentalResearchReq(BaseModel):
+    code: str
+    name: str = ""
+    source: str = "manual_ai_berkshire"
+    memo: str = ""
+    verdict: str = ""
+    business_quality_score: Optional[float] = None
+    valuation_margin_score: Optional[float] = None
+    moat_score: Optional[float] = None
+    management_score: Optional[float] = None
+    thesis_invalidators: list = []
+    financial_checks: list = []
 
-class RecoverIdReq(BaseModel):
-    kis_account_no: str
-    kis_app_secret: str
 
-class RecoverPwReq(BaseModel):
-    username: str
-    kis_account_no: str
-    kis_app_secret: str
-    new_password: str
 
 _rl_login = SlidingWindowLimiter(max_hits=int(os.getenv("ARQUANT_RL_LOGIN_MAX", "8")),
                                  window_sec=float(os.getenv("ARQUANT_RL_WIN", "900")))
@@ -338,158 +303,77 @@ def _throttle(lim: SlidingWindowLimiter, key: str) -> None:
 # ─── 인증 엔드포인트 (HYFE app.py:160-282 패턴) ───────────────────────────────
 @app.get("/api/auth_status")
 async def auth_status(request: Request):
-    """SPA가 로그인 화면을 띄울지 판단 — 계정 존재 여부 + 현재 세션 유효 여부."""
-    auth_store.init()
-    accts = auth_store.list_accounts()
-    uid = auth_store.lookup_session(_session_token(request))
-    return {"has_accounts": bool(accts), "authenticated": uid is not None}
-
-@app.get("/api/check_username")
-async def check_username(u: str = ""):
-    """아이디 중복 확인 (등록 폼 실시간 체크용 — 공개). 서버가 최종 게이트도 겸함."""
-    u = (u or "").strip()
-    if not u:
-        return {"ok": False, "available": False, "reason": "아이디를 입력하세요."}
-    return {"ok": True, "available": not auth_store.username_exists(u)}
-
-@app.post("/api/register")
-async def register(req: RegisterReq, request: Request):
-    """최초 등록 — 아이디(중복 불가) + 비밀번호(정책) + API 자격증명(실검증) 후 저장·활성화."""
-    ip = _client_ip(request)
-    _throttle(_rl_recover, f"register:{ip}")
-    username = (req.username or "").strip()
-    if not username or len(username) < 3:
-        raise HTTPException(400, "아이디는 3자 이상이어야 합니다.")
-    perr = auth_store.password_policy_error(req.password or "")
-    if perr:
-        raise HTTPException(400, perr)
-    if auth_store.username_exists(username):
-        raise HTTPException(409, f"이미 사용 중인 아이디입니다: {username}")
-    mode = auth_store.VIEWER_MODE if req.account_mode == auth_store.VIEWER_MODE else auth_store.TRADING_MODE
-    kis_base_url = (req.kis_base_url or DEFAULT_KIS_BASE_URL).strip().rstrip("/")
-    if mode == auth_store.TRADING_MODE:
-        if not all((req.deepseek_api_key.strip(), req.kis_app_key.strip(),
-                    req.kis_app_secret.strip(), req.kis_account_no.strip())):
-            raise HTTPException(400, "거래 계정은 DeepSeek와 KIS 정보를 모두 입력해야 합니다.")
-        ok, msg = await _validate_kis(req.kis_app_key, req.kis_app_secret, kis_base_url)
-        if not ok:
-            raise HTTPException(400, msg)
-        ok, msg = await _validate_deepseek(req.deepseek_api_key)
-        if not ok:
-            raise HTTPException(400, msg)
-    uid = auth_store.upsert_user(
-        username=username, password=req.password,
-        kis_app_key=req.kis_app_key.strip(), kis_app_secret=req.kis_app_secret.strip(),
-        deepseek_api_key=req.deepseek_api_key.strip(), kis_account_no=req.kis_account_no.strip(),
-        kis_base_url=kis_base_url, account_mode=mode)
-    auth_store.audit("register", username=username, ip=ip, outcome="ok", detail="")
-    # Phase 2: 전역 활성화 폐지 — 세션만 발급한다. 유저 컨텍스트(브로커/스왐)는
-    # 첫 인증 요청 시 REGISTRY.get_or_create(uid) 로 lazy 생성된다.
-    auth_store.touch_login(uid)
-    return _issue_session(uid, req.remember)
-
-@app.post("/api/login")
-async def login(req: LoginReq, request: Request):
-    """재로그인 — 아이디 + 비밀번호 (argon2 검증)."""
-    ip = _client_ip(request)
-    _throttle(_rl_login, f"login:{ip}")
-    _throttle(_rl_login, f"login:user:{(req.username or '').strip()}")
-    u = auth_store.verify_password((req.username or "").strip(), req.password or "")
-    if not u:
-        auth_store.audit("login", username=(req.username or "").strip(), ip=ip,
-                         outcome="fail", detail="")
-        raise HTTPException(401, "아이디 또는 비밀번호가 일치하지 않습니다.")
-    auth_store.audit("login", username=u["username"], ip=ip, outcome="ok", detail="")
-    # Phase 2: 전역 활성화 폐지 — 세션만 발급. 유저 컨텍스트는 lazy 생성된다.
-    auth_store.touch_login(u["id"])
-    return _issue_session(u["id"], req.remember)
-
-@app.post("/api/recover_id")
-async def recover_id(req: RecoverIdReq, request: Request):
-    ip = _client_ip(request)
-    _throttle(_rl_recover, f"recid:{ip}")
-    uname = auth_store.find_username_by_factors(
-        req.kis_account_no, req.kis_app_secret)
-    auth_store.audit("recover_id", username=uname, ip=ip,
-                     outcome=("ok" if uname else "fail"), detail="")
-    if not uname:
-        raise HTTPException(404, "일치하는 계정을 찾을 수 없습니다.")
-    return {"username": uname}
-
-@app.post("/api/recover_password")
-async def recover_password(req: RecoverPwReq, request: Request):
-    ip = _client_ip(request)
-    _throttle(_rl_recover, f"recpw:{ip}")
-    try:
-        ok = auth_store.reset_password_by_factors(
-            (req.username or "").strip(), req.kis_account_no,
-            req.kis_app_secret, req.new_password)
-    except ValueError as e:
-        auth_store.audit("recover_password", username=(req.username or "").strip(),
-                         ip=ip, outcome="fail", detail="policy")
-        raise HTTPException(400, str(e))
-    auth_store.audit("recover_password", username=(req.username or "").strip(),
-                     ip=ip, outcome=("ok" if ok else "fail"), detail="")
-    if not ok:
-        raise HTTPException(404, "일치하는 계정을 찾을 수 없습니다.")
-    return {"ok": True}
-
-@app.post("/api/logout")
-async def logout(request: Request):
-    auth_store.delete_session(_session_token(request))
-    resp = JSONResponse(content={"ok": True})
-    resp.delete_cookie(auth_store.SESSION_COOKIE, path="/",
-                       secure=_COOKIE_SECURE, httponly=True, samesite="lax")
-    return resp
+    return {"authenticated": True, "provider": "cloudflare_access"}
 
 @app.get("/api/me")
 async def me(request: Request):
     uid = request.state.user_id
     c = auth_store.get_user_credentials(uid) or {}
+    # 통합 계정(사장 지시 2026-07-20): 자격증명 표시는 활성(토글) 프로필 기준,
+    # 정체성(username/is_admin)은 로그인 행 기준.
+    profiles = auth_store.list_profiles(uid)
+    eff = auth_store.resolve_profile_uid(uid)
+    ec = auth_store.get_user_credentials(eff) or c
+    active_kind = next((p["kind"] for p in profiles if p.get("is_active")), None)
     return {"user_id": uid, "username": c.get("username"), "label": c.get("label"),
-            "kis_app_key_masked": auth_store._mask(c.get("kis_app_key", "")),
-            "kis_account_no_masked": auth_store._mask(c.get("kis_account_no", ""), 4),
-            "kis_base_url": c.get("kis_base_url", ""),  # 프로필 '정보 변경'의 실전/모의 선택자 기본값용 (비밀 아님)
+            "kis_app_key_masked": auth_store._mask(ec.get("kis_app_key", "")),
+            "kis_account_no_masked": auth_store._mask(ec.get("kis_account_no", ""), 4),
+            "kis_base_url": ec.get("kis_base_url", ""),  # 프로필 '정보 변경'의 실전/모의 선택자 기본값용 (비밀 아님)
             "has_dart": bool(c.get("dart_key")),
             "account_mode": c.get("account_mode", auth_store.TRADING_MODE),
             "is_viewer": c.get("account_mode") == auth_store.VIEWER_MODE,
+            "profiles": profiles, "active_profile_uid": eff,
+            "paper_only": bool(__import__("config").PAPER_ONLY),
+            "active_profile_kind": active_kind,
             "is_admin": bool(c.get("is_admin"))}  # 사장 피드백 2026-05-18: 코드변경 전체반영 권한 표시
 
-class PwChangeReq(BaseModel):
-    current: str
-    new: str
+
+@app.get("/api/profiles")
+async def profiles_list(request: Request):
+    """통합 계정의 매매 프로필 목록 + 활성 프로필 (헤더 토글용)."""
+    uid = _uid_or_403(request)
+    return {"profiles": auth_store.list_profiles(uid),
+            "active_uid": auth_store.resolve_profile_uid(uid)}
+
+
+class ProfileActivateReq(BaseModel):
+    uid: int
+
+
+@app.post("/api/profiles/activate")
+async def profiles_activate(req: ProfileActivateReq, request: Request):
+    """토글 전환 — 본인 소유 프로필로만 전환 가능. 각 프로필 스웜은 독립이므로
+    전환은 보기/제어 대상만 바꾸며 다른 프로필의 매매 루프에 영향을 주지 않는다."""
+    uid = _uid_or_403(request)
+    if not auth_store.set_active_profile(uid, req.uid):
+        raise HTTPException(400, "전환할 수 없는 프로필입니다.")
+    return {"ok": True, "active_uid": auth_store.resolve_profile_uid(uid),
+            "profiles": auth_store.list_profiles(uid)}
+
 
 class CredsReq(BaseModel):
-    deepseek_api_key: Optional[str] = None
     kis_app_key: Optional[str] = None
     kis_app_secret: Optional[str] = None
     kis_account_no: Optional[str] = None
     kis_base_url: Optional[str] = None
 
+class ProfileUpsertReq(BaseModel):
+    kind: Literal["kis_real", "kis_paper"]
+    kis_app_key: Optional[str] = None
+    kis_app_secret: Optional[str] = None
+    kis_account_no: Optional[str] = None
+
 class DirectiveReq(BaseModel):
     text: str
 
-class DeleteAccountReq(BaseModel):
-    password: str
 
-@app.post("/api/profile/password")
-async def profile_password(req: PwChangeReq, request: Request):
-    uid = _uid_or_403(request)
-    ip = _client_ip(request)
-    creds_pw = auth_store.get_user_credentials(uid)
-    uname_pw = (creds_pw or {}).get("username", "")
-    try:
-        auth_store.change_password(uid, req.current, req.new)
-    except ValueError:
-        auth_store.audit("profile_password", username=uname_pw, ip=ip,
-                         outcome="fail", detail="policy_or_current")
-        raise HTTPException(400, "비밀번호 변경 실패 — 현재 비밀번호 불일치 또는 정책 위반.")
-    auth_store.audit("profile_password", username=uname_pw, ip=ip, outcome="ok", detail="")
-    return {"ok": True}
 
 @app.post("/api/profile/credentials")
 async def profile_credentials(req: CredsReq, request: Request):
-    uid = _uid_or_403(request)
+    # 통합 계정: '정보 변경'은 활성(토글) 프로필의 KIS 자격증명을 갱신한다.
+    # 관전 계정은 프로필이 없어 자기 행이 그대로 대상(업그레이드 경로 유지).
+    login_uid = _uid_or_403(request)
+    uid = auth_store.resolve_profile_uid(login_uid)
     ip = _client_ip(request)
     creds_cr = auth_store.get_user_credentials(uid)
     uname_cr = (creds_cr or {}).get("username", "")
@@ -498,7 +382,6 @@ async def profile_credentials(req: CredsReq, request: Request):
     # Fix 2 — strip whitespace on provided fields (mirrors register handler)
     ak = req.kis_app_key.strip() if req.kis_app_key is not None else None
     as_ = req.kis_app_secret.strip() if req.kis_app_secret is not None else None
-    ds_key = req.deepseek_api_key.strip() if req.deepseek_api_key is not None else None
     an = req.kis_account_no.strip() if req.kis_account_no is not None else None
     bu = req.kis_base_url.strip().rstrip("/") if req.kis_base_url is not None else None
     # Resolve effective values for KIS validation (fall back to stored values when not provided)
@@ -506,23 +389,17 @@ async def profile_credentials(req: CredsReq, request: Request):
     eff_as = as_ if as_ is not None else cur.get("kis_app_secret")
     eff_bu = bu if bu is not None else cur.get("kis_base_url")
     if upgrading_viewer:
-        if not all((ak, as_, ds_key, an, bu)):
+        if not all((ak, as_, an, bu)):
             raise HTTPException(
-                400, "관전 모드 업그레이드는 DeepSeek, KIS App Key/Secret, 계좌번호, 거래 환경을 모두 입력해야 합니다.")
+                400, "관전 모드 업그레이드는 KIS App Key/Secret, 계좌번호, 거래 환경을 모두 입력해야 합니다.")
     if ak is not None or as_ is not None or bu is not None:
         ok, msg = await _validate_kis(eff_ak, eff_as, eff_bu)
         if not ok:
             auth_store.audit("profile_credentials", username=uname_cr, ip=ip,
                              outcome="fail", detail="validate")
             raise HTTPException(400, msg)
-    if ds_key is not None:
-        ok, msg = await _validate_deepseek(ds_key)
-        if not ok:
-            auth_store.audit("profile_credentials", username=uname_cr, ip=ip,
-                             outcome="fail", detail="validate")
-            raise HTTPException(400, msg)
     auth_store.update_credentials(
-        uid, deepseek_api_key=ds_key, kis_app_key=ak,
+        uid, kis_app_key=ak,
         kis_app_secret=as_, kis_account_no=an,
         kis_base_url=bu)
     if upgrading_viewer:
@@ -542,6 +419,67 @@ async def profile_credentials(req: CredsReq, request: Request):
         ctx.reset()
     return {"ok": True, "upgraded": upgrading_viewer,
             "account_mode": auth_store.TRADING_MODE}
+
+
+async def _reset_profile_ctx(uid: int):
+    """자격증명 변경 후 이 프로필 컨텍스트를 새 creds로 재생성(진행 중 루프는 안전 정지)."""
+    ctx = REGISTRY.get(uid)
+    if ctx is not None:
+        if ctx.task and not ctx.task.done():
+            await _stop_uid(uid)
+        fresh = auth_store.get_user_credentials(uid)
+        if fresh:
+            ctx.creds = fresh
+        ctx.reset()
+
+
+@app.post("/api/profile/upsert")
+async def profile_upsert(req: ProfileUpsertReq, request: Request):
+    """실전·모의 KIS 프로필을 추가하거나 갱신한다. 저장만으로 매매를 시작하지 않는다."""
+    login_uid = _uid_or_403(request)
+    master = auth_store.login_uid_of(login_uid)   # 서브 프로필로 로그인했어도 마스터 기준
+    kind = (req.kind or "").strip()
+    ip = _client_ip(request)
+    if kind not in (auth_store.PROFILE_KIS_REAL, auth_store.PROFILE_KIS_PAPER):
+        raise HTTPException(400, "알 수 없는 프로필 종류입니다.")
+    existing = next((p for p in auth_store.list_profiles(master) if p["kind"] == kind), None)
+
+    if kind in (auth_store.PROFILE_KIS_REAL, auth_store.PROFILE_KIS_PAPER):
+        ak = (req.kis_app_key or "").strip()
+        as_ = (req.kis_app_secret or "").strip()
+        an = (req.kis_account_no or "").strip()
+        base = DEFAULT_KIS_BASE_URL if kind == auth_store.PROFILE_KIS_REAL else MOCK_KIS_BASE_URL
+        if existing:
+            uid = int(existing["uid"])
+            cur = auth_store.get_user_credentials(uid) or {}
+            eff_ak = ak or cur.get("kis_app_key")
+            eff_as = as_ or cur.get("kis_app_secret")
+            if ak or as_:
+                ok, msg = await _validate_kis(eff_ak, eff_as, base)
+                if not ok:
+                    raise HTTPException(400, msg)
+            auth_store.update_credentials(
+                uid, kis_app_key=(ak or None), kis_app_secret=(as_ or None),
+                kis_account_no=(an or None), kis_base_url=base)
+            await _reset_profile_ctx(uid)
+        else:
+            if not all((ak, as_, an)):
+                raise HTTPException(400, "App Key/Secret, 계좌번호를 모두 입력하세요.")
+            ok, msg = await _validate_kis(ak, as_, base)
+            if not ok:
+                raise HTTPException(400, msg)
+            uid = auth_store.create_subprofile(
+                master, kind, kis_app_key=ak, kis_app_secret=as_,
+                kis_account_no=an, kis_base_url=base)
+    # 관전(viewer) 마스터가 매매 프로필을 연결하면 매매 계정으로 승격.
+    if auth_store.is_viewer(master):
+        auth_store.set_account_mode(master, auth_store.TRADING_MODE)
+    auth_store.set_active_profile(master, uid)   # 저장 즉시 이 프로필을 활성화(상단 배지 켜짐)
+    auth_store.audit("profile_upsert", username=(auth_store.get_user_credentials(master) or {}).get("username", ""),
+                     ip=ip, outcome="ok", detail=f"kind={kind} uid={uid}")
+    return {"ok": True, "kind": kind, "uid": uid,
+            "profiles": auth_store.list_profiles(master)}
+
 
 @app.get("/api/profile/directives")
 async def profile_directives_list(request: Request):
@@ -563,58 +501,26 @@ async def profile_directives_del(did: str, request: Request):
     sd.remove_directive(uid, did)
     return {"ok": True, "directives": sd.load(uid)}
 
-@app.post("/api/profile/delete_account")
-async def profile_delete_account(req: DeleteAccountReq, request: Request):
-    uid = _uid_or_403(request)
-    ip = _client_ip(request)
-    creds = auth_store.get_user_credentials(uid)
-    if not creds or not auth_store.verify_password(creds["username"], req.password or ""):
-        auth_store.audit("delete_account",
-                         username=(creds or {}).get("username", ""),
-                         ip=ip, outcome="fail", detail="")
-        raise HTTPException(400, "비밀번호가 일치하지 않습니다.")
-    if auth_store.is_admin(uid):
-        auth_store.audit("delete_account", username=creds["username"], ip=ip,
-                         outcome="fail", detail="admin_protected")
-        raise HTTPException(400, "ADMIN 계정은 탈퇴할 수 없습니다(단독 ADMIN 보호).")
-    # Audit BEFORE deletion (need creds["username"])
-    auth_store.audit("delete_account", username=creds["username"], ip=ip, outcome="ok", detail="")
-    await _decommission_uid(uid)   # 루프 정지 → 컨텍스트 제거 → profiles/·data/ 정리 (고아 부활·잔존 거래 방지)
-    auth_store.delete_user(uid)
-    resp = JSONResponse(content={"ok": True})
-    resp.delete_cookie(auth_store.SESSION_COOKIE, path="/",
-                       secure=_COOKIE_SECURE, httponly=True, samesite="lax")
-    return resp
+# ── 사용자 전략 (사장 지시 2026-07-03) — 채팅에서 STRATEGY 로 인식돼 저장된 전략 관리 ──
+@app.get("/api/profile/user_strategy")
+async def profile_user_strategy_get(request: Request):
+    uid = _require_trading(request)
+    from infra import user_strategy
+    return {"strategy": user_strategy.get_strategy(uid)}
 
-class AdminDeleteReq(BaseModel):
-    username: str
+@app.delete("/api/profile/user_strategy")
+async def profile_user_strategy_del(request: Request):
+    uid = _require_trading(request)
+    import runtime
+    from infra import user_strategy
+    removed = user_strategy.clear_strategy(uid)
+    if removed:  # 전략 해제 = 운용지원실장 자동 튜닝 복원
+        runtime.set_ops_feedback(True, uid=uid, by="user_strategy_clear")
+    return {"ok": True, "removed": removed}
 
-@app.get("/api/admin/members")
-async def admin_members(request: Request):
-    _require_admin(request)
-    return {"members": auth_store.list_members()}
 
-@app.post("/api/admin/members/delete")
-async def admin_member_delete(req: AdminDeleteReq, request: Request):
-    me = _require_admin(request)
-    target = auth_store.find_user_by_username((req.username or "").strip())
-    if not target:
-        auth_store.audit("admin_delete_member", username=(req.username or "").strip(),
-                         ip=_client_ip(request), outcome="fail", detail="not_found")
-        raise HTTPException(404, "해당 회원을 찾을 수 없습니다.")
-    if target["id"] == me:
-        auth_store.audit("admin_delete_member", username=(req.username or "").strip(),
-                         ip=_client_ip(request), outcome="fail", detail="self")
-        raise HTTPException(400, "본인 계정은 삭제할 수 없습니다.")
-    if target.get("is_admin"):
-        auth_store.audit("admin_delete_member", username=(req.username or "").strip(),
-                         ip=_client_ip(request), outcome="fail", detail="admin_protected")
-        raise HTTPException(400, "ADMIN 계정은 삭제할 수 없습니다(단독 ADMIN 보호).")
-    await _decommission_uid(target["id"])   # 루프 정지 → 컨텍스트 제거 → profiles/·data/ 정리
-    auth_store.delete_user(target["id"])
-    auth_store.audit("admin_delete_member", username=target["username"],
-                     ip=_client_ip(request), outcome="ok", detail=f"uid={target['id']}")
-    return {"ok": True}
+
+
 
 @app.get("/api/accounts")
 async def accounts():
@@ -623,31 +529,19 @@ async def accounts():
     return {"accounts": auth_store.list_accounts()}
 
 @app.get("/health")
-async def health(): return {"status":"ok","service":"ArQuant v1.0","timestamp":datetime.now().isoformat()}
+async def health(): return {"status":"ok","service":"QuantInSight","timestamp":datetime.now().isoformat()}
 
 @app.get("/api/status")
 async def status(request: Request):
-    # Phase 2 멀티테넌트: 요청 유저(request.state.user_id)의 스왐 상태를 반환한다.
+    # Phase 2 멀티테넌트: 요청 유저의 활성(토글) 프로필 스왐 상태를 반환한다.
     auth_uid = _uid_or_403(request)
-    viewer = auth_store.is_viewer(auth_uid)
     uid = _read_uid(request)
+    viewer = auth_store.is_viewer(auth_uid)
     ctx = REGISTRY.get_or_create(uid)
     s = ctx.swarm.get_status()
     # Expose whether THIS user's background task is actively running so the frontend can sync buttons.
     s["is_running"] = bool(ctx.task and not ctx.task.done())
-    # 사장 지시 2026-05-21: API 비용 — 시간(/h)·일(/d)·월(/m)·총누적 요약 + 보는 사람(세션)의 표시 모드.
-    _empty = {"usd": 0.0, "calls": 0}
-    try:
-        from agents.base_agent import cost_summary
-        import runtime
-        if not viewer:
-            cs = cost_summary()
-            cs["mode"] = runtime.cost_display_mode(uid)
-            s["api_cost"] = cs
-    except Exception:
-        if not viewer:
-            s["api_cost"] = {"h": dict(_empty), "d": dict(_empty), "m": dict(_empty),
-                             "total": dict(_empty), "mode": "h"}
+    # (사장 지시 2026-07-21: LLM 비용 표시 로직 제거 — 로컬 서버라 호출당 외부 비용 없음.)
     # 운용지원실장 피드백 on/off 토글 상태 (프로필별) — 요청 유저 본인 계정 기준.
     try:
         import runtime
@@ -659,15 +553,19 @@ async def status(request: Request):
 
 @app.post("/api/start")
 async def start(req: Req, request: Request):
+    uid0 = _uid_or_403(request)
+    eff = auth_store.resolve_profile_uid(uid0)
     uid = _require_trading(request)
     await _start_uid(uid, req.directive)
-    return {"message":"🟢 Arquant 감시 시작"}
+    return {"message":"🟢 감시 시작"}
 
 @app.post("/api/stop")
 async def stop(request: Request):
     # 사장 지시 2026-05-22: 즉시 중지 — stop_event 만으로는 진행 중 사이클이 끝까지 돌므로,
     # 실행 중인 asyncio 태스크를 취소해 LLM 호출·분석을 그 자리에서 중단한다.
     # Phase 2: 요청 유저의 루프만 멈춘다(다른 유저 무영향).
+    uid0 = _uid_or_403(request)
+    eff = auth_store.resolve_profile_uid(uid0)
     uid = _require_trading(request)
     await _stop_uid(uid)
     return {"message": "🔴 즉시 중지됨"}
@@ -677,20 +575,11 @@ async def ceo_command(req: CeoReq, request: Request):
     # 사장 지시 2026-05-21: 저장 여부는 체크박스 대신 ceo_directive 안에서 에이전트가
     # 지시 내용·결과로 자동 판단해 standing_directive 로 저장한다(자동 판단 경로).
     # Phase 2: 요청 유저의 스왐에 지시를 전달한다.
+    uid0 = _uid_or_403(request)
+    eff = auth_store.resolve_profile_uid(uid0)
     uid = _require_trading(request)
     resp = await REGISTRY.get_or_create(uid).swarm.ceo_directive(req.message)
     return {"response": resp}
-
-@app.post("/api/cost_mode")
-async def cost_mode_set(req: CostModeReq, request: Request):
-    """우상단 API 비용 표시 합산 모드 — 프로필(세션 사용자)별 저장."""
-    uid = _require_trading(request)
-    import runtime
-    try:
-        mode = runtime.set_cost_display_mode((req.mode or "").strip(), uid)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return {"ok": True, "mode": mode}
 
 @app.get("/api/history")
 async def history(request: Request):
@@ -767,6 +656,10 @@ async def agents(request: Request):
         {"name":"채권운용실장","role":"채권 ETF 매매·금리 전략","model":MODEL_ASSIGNMENTS["bond_manager"]},
         {"name":"원자재운용실장","role":"원자재 ETF 매매·실물자산","model":MODEL_ASSIGNMENTS["commodity_manager"]},
         {"name":"운용지원실장","role":"진단·프로필 전략 조정","model":MODEL_ASSIGNMENTS["ops_support"]},
+        # 사장 지시 2026-07-22: 구 수탁자책임실 반려 기능을 컴플라이언스실장으로 부활.
+        # 사이클 판정은 결정론 코드(agents/compliance.screen), LLM 은 @멘션 설명 전용.
+        {"name":"컴플라이언스실장","role":"수탁자책임·ESG 반려·리서치 정직성",
+         "model":f"룰 엔진(Python) + {MODEL_ASSIGNMENTS['compliance']}"},
     ]
     # 사장 지시 2026-05-20: 운용지원실장은 ADMIN·일반 유저 모두 사용 가능(프로필 한정 파라미터 조정).
     return {"agents": roster}
@@ -776,10 +669,11 @@ async def agents(request: Request):
 async def ops_feedback_get(request: Request):
     # 사장 지시 2026-05-20: 운용지원 토글은 프로필별 — 요청 유저 본인 계정 상태를 반환.
     import runtime
-    uid = getattr(request.state, "user_id", None)
+    login_uid = getattr(request.state, "user_id", None)
+    uid = _read_uid(request)  # 통합 계정: 활성 프로필 기준 (set 경로와 대칭)
     _admin = False
     try:
-        _admin = auth_store.is_admin(uid)
+        _admin = auth_store.is_admin(login_uid)
     except Exception:
         _admin = False
     st = runtime.ops_feedback_state(uid)
@@ -791,7 +685,7 @@ async def ops_feedback_set(request: Request, req: dict):
     # 사장 지시 2026-05-20: 운용지원 토글은 프로필별 — 각 유저가 본인 계정 것만 켜고 끈다
     # (코드 자가수정 폐지로 더 이상 ADMIN 전용일 필요 없음).
     import runtime
-    uid = _require_trading(request)
+    uid = _require_strategy_uid(request)
     enabled = bool((req or {}).get("enabled"))
     st = runtime.set_ops_feedback(enabled, uid=uid, by="dashboard")
     try:
@@ -806,7 +700,7 @@ async def ops_feedback_set(request: Request, req: dict):
 @app.get("/api/notif_settings")
 async def notif_settings_get(request: Request):
     import runtime
-    uid = getattr(request.state, "user_id", None)
+    uid = _read_uid(request)  # 통합 계정: 활성 프로필 기준 (set 경로와 대칭)
     return {"settings": runtime.notif_settings(uid)}
 
 @app.post("/api/notif_settings")
@@ -831,26 +725,37 @@ def _uid_or_403(request: Request) -> int:
     return uid
 
 
+def _eff_uid(request: Request) -> int:
+    """세션(로그인) uid → 현재 토글된 매매 프로필 uid (통합 계정, 사장 지시 2026-07-20).
+    프로필이 없으면 자기 자신."""
+    return auth_store.resolve_profile_uid(_uid_or_403(request))
+
+
 def _read_uid(request: Request) -> int:
-    """조회 대상 uid. 관전 계정은 단독 ADMIN 계정, 거래 계정은 자기 자신."""
+    """조회 대상 uid. 관전 계정은 ADMIN 의 KIS 모의 프로필, 그 외엔 활성(토글) 프로필."""
     uid = _uid_or_403(request)
     if auth_store.is_viewer(uid):
         target = auth_store.admin_view_uid()
         if target is None:
             raise HTTPException(503, "관전할 ADMIN 계정을 찾을 수 없습니다.")
         return target
-    return uid
+    return auth_store.resolve_profile_uid(uid)
 
 
 def _require_trading(request: Request) -> int:
+    """거래 가능한 KIS 프로필을 반환한다."""
     uid = _uid_or_403(request)
-    # ADMIN(hh09080)은 관전 대상 계정이자 실제 운용 주체다. 계정 모드 마이그레이션이나
-    # 잘못된 프로필 값 때문에 실행/중지까지 잠기는 일이 없도록 관리자 권한을 우선한다.
-    if auth_store.is_admin(uid):
-        return uid
-    if auth_store.is_viewer(uid):
-        raise HTTPException(403, "관전 모드에서는 조회만 가능합니다. 정보 변경에서 거래 계정으로 업그레이드하세요.")
-    return uid
+    if auth_store.is_viewer(uid) and not auth_store.is_admin(uid):
+        raise HTTPException(403, "관전 모드에서는 조회만 가능합니다.")
+    eff = auth_store.resolve_profile_uid(uid)
+    creds = auth_store.get_user_credentials(eff) or {}
+    if auth_store.profile_kind_of(creds) not in auth_store.PROFILE_KIND_ORDER:
+        raise HTTPException(403, "KIS 실전 또는 모의 프로필을 연결하세요.")
+    return eff
+
+
+def _require_strategy_uid(request: Request) -> int:
+    return _require_trading(request)
 
 
 def _admin_uid_or_403(request: Request) -> int:
@@ -877,9 +782,6 @@ class _AdminConfigReq(BaseModel):
     model_overrides: Optional[Dict[str, str]] = None
     news_crawl_interval_sec: Optional[int] = None
 
-class _AdminMemberReq(BaseModel):
-    user_id: int
-    is_admin: bool
 
 class _FeedbackReq(BaseModel):
     type: str = "etc"               # bug | feature | etc
@@ -909,6 +811,7 @@ async def admin_config_get(request: Request):
         "macro_analyst": "글로벌리서치팀장 (매크로)",
         "quant_analyst": "계량분석팀장 (정량평가)",
         "news_analyst": "마켓센티먼트팀장 (감성·이벤트)",
+        "insight_analyst": "기업리서치팀장 (기업 분석자료)",
         "news_curator": "뉴스 크롤러 (헤드라인 선별)",
         "macro_researcher": "매크로 리서치 (웹 리서치)",
         "trader": "프롭트레이딩팀장 (주문·보고)",
@@ -924,7 +827,8 @@ async def admin_config_get(request: Request):
             "news_crawl_interval_default": int(_crawl_def),
             "model_defaults": MODEL_ASSIGNMENTS,
             "model_labels": _labels,
-            "model_keys": list(MODEL_ASSIGNMENTS.keys())}
+            "model_keys": list(MODEL_ASSIGNMENTS.keys()),
+            "model_choices": _ac.model_choices()}
 
 
 @app.post("/api/admin/config")
@@ -987,11 +891,6 @@ async def admin_feedback_reply(req: _FeedbackReplyReq, request: Request):
     return {"ok": True, "item": e}
 
 
-@app.post("/api/admin/member")
-async def admin_member_set(request: Request, req: _AdminMemberReq):
-    _require_admin(request)
-    ok = auth_store.set_admin(req.user_id, req.is_admin)
-    return {"ok": ok, "members": auth_store.list_members()}
 
 
 @app.get("/api/coresight/pending")
@@ -1111,7 +1010,8 @@ async def balance(request: Request):
                 except Exception as _le:
                     logger.warning(f"[balance] 원장 평가 실패(uid={uid}): {_le}")
                 record_equity(ctx.swarm.equity_path, snap["buying_power"], "poll",
-                              holdings=snap.get("holdings") or [], ledger_eval=_led_val)
+                              holdings=snap.get("holdings") or [], ledger_eval=_led_val,
+                              is_mock=bool(getattr(ctx.broker, "is_mock", False)))
             except Exception as e:
                 logger.warning(f"[balance] equity 기록 실패(uid={uid}): {e}")
         # 사장 지시 2026-06-01: 모의계정은 KIS 모의서버가 해외평가를 미지원해 잔고(총평가)가 부정확하므로,
@@ -1132,7 +1032,8 @@ async def equity(request: Request, limit: int = 500, view: str = "realtime"):
     Phase 2: 요청 유저의 equity_curve 를 읽는다."""
     from main_swarm import get_equity_series
     v = view if view in ("realtime", "daily", "monthly") else "realtime"
-    ep = REGISTRY.get_or_create(_read_uid(request)).swarm.equity_path
+    uid = _read_uid(request)
+    ep = REGISTRY.get_or_create(uid).swarm.equity_path
     return {"series": get_equity_series(ep, limit, v), "view": v}
 
 async def _attach_current_fallback(base: dict, broker) -> dict:
@@ -1202,6 +1103,40 @@ async def api_scorecard(request: Request):
     return _scorecard_for_uid(_read_uid(request))
 
 
+@app.get("/api/fundamental_research")
+async def api_fundamental_research(request: Request, code: str = "", limit: int = 100):
+    """ai-berkshire식 장기 펀더멘털 리서치 스냅샷 조회(advisory)."""
+    uid = _read_uid(request)
+    from infra import fundamental_research_store
+    if code:
+        row = fundamental_research_store.latest(uid, code)
+        return {"item": row}
+    return {"items": fundamental_research_store.list_snapshots(uid=uid, limit=max(1, min(int(limit or 100), 500)))}
+
+
+@app.post("/api/fundamental_research")
+async def api_record_fundamental_research(req: FundamentalResearchReq, request: Request):
+    """수동 ai-berkshire/Codex 리서치 결과를 advisory 스냅샷으로 저장."""
+    uid = _read_uid(request)
+    from infra import fundamental_research_store
+    from tools.fundamental_rigor import assess_fundamental_research
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    base = assess_fundamental_research(req.code, req.name or req.code, dart_text=req.memo, financial_text=req.memo, source=req.source)
+    for k in ("verdict", "business_quality_score", "valuation_margin_score", "moat_score", "management_score"):
+        v = getattr(req, k, None)
+        if v not in (None, ""):
+            base[k] = v
+    if req.thesis_invalidators:
+        base["thesis_invalidators"] = req.thesis_invalidators
+    if req.financial_checks:
+        base["financial_checks"] = req.financial_checks
+    if req.memo:
+        base["memo"] = req.memo[:2000]
+    base.update({"uid": uid, "ts": ts, "cycle_started_at": ts, "source": req.source or "manual_ai_berkshire"})
+    rid = fundamental_research_store.record_snapshot(base)
+    return {"ok": bool(rid), "id": rid, "item": base}
+
+
 @app.get("/api/benchmark")
 async def benchmark(request: Request, view: str = "daily"):
     """벤치마크 곡선 — KOSPI·NASDAQ 를 자산곡선 시작 평가액에 리베이스해 겹쳐 보여준다.
@@ -1225,7 +1160,8 @@ async def benchmark(request: Request, view: str = "daily"):
         return {"benchmarks": []}
 
     out = []
-    for name, key in (("KOSPI", "kospi"), ("NASDAQ", "nasdaq")):
+    # 사장 지시 2026-06-16: nasdaq 값은 실제 지수가 아니라 QQQ 현재가 프록시이므로 라벨을 명확히 한다.
+    for name, key in (("KOSPI", "kospi"), ("NASDAQ(QQQ)", "nasdaq")):
         # 지수값이 있는 첫 포인트에 리베이스 (오해를 주는 +0.00 평탄선 회피 — 값 없으면 생략)
         base_idx = next((p[key] for p in series if p.get(key)), None)
         if not base_idx:
@@ -1259,7 +1195,12 @@ async def ledger_reseed(request: Request):
         return {"ok": False, "message": f"재시드 실패: {e}"}
     if led is None:
         return {"ok": False, "message": "재시드 실패 — KIS 잔고 조회가 정상일 때 다시 시도하세요"}
-    return {"ok": True, "message": f"원장 재시드 완료 — KRW {led['cash_krw']:,.0f} / USD {led['cash_usd']:,.2f} / 종목 {len(led['positions'])}개",
+    # 사장 지시 2026-06-16: 결제 과도기(US/해외 매수 D+2 미결제) 중 재시드하면 예수금(미차감)과
+    # 보유(추가)가 이중계상되어 평가액이 일시 과대해질 수 있다(uid1 9.66M 사례). 추측으로 차감하면
+    # 정상 결제 시 과소로 틀어지므로, 주의 안내만 덧붙이고 정확한 정정은 결제(D+2) 후 재시드로 유도한다.
+    _settle_caution = (" · ⚠ 최근 해외(US) 매수가 미결제(D+2) 상태면 평가액이 일시 과대할 수 있습니다 — "
+                       "결제 완료 후 한 번 더 재시드하면 정확해집니다")
+    return {"ok": True, "message": f"원장 재시드 완료 — KRW {led['cash_krw']:,.0f} / USD {led['cash_usd']:,.2f} / 종목 {len(led['positions'])}개{_settle_caution}",
             "ledger": {k: led[k] for k in ("seeded_at", "seed_source", "cash_krw", "cash_usd")},
             "positions": led["positions"]}
 
@@ -1278,23 +1219,36 @@ async def strategy_get(request: Request):
     (active.params 는 이미 프로필 오버라이드가 반영된 '효과적' 값이므로 설명도 전체 상세설정을 보여줄 수 있다)."""
     import runtime
     from infra import profile_overrides
-    from config import STRATEGY_KEY_META, STRATEGY_TUNABLE_KEYS
+    from config import STRATEGY_KEY_META, STRATEGY_TUNABLE_KEYS, STRATEGY_DEFAULTS
     uid = _read_uid(request)
     active = runtime.active(uid=uid)
     active["ops_since"] = profile_overrides.last_updated(uid)
+    locked = []
     return {"active": active,
             "history": runtime.history(),
-            "key_meta": STRATEGY_KEY_META, "key_order": STRATEGY_TUNABLE_KEYS}
+            "key_meta": STRATEGY_KEY_META, "key_order": STRATEGY_TUNABLE_KEYS,
+            "defaults": STRATEGY_DEFAULTS, "locked_keys": locked}
 
 @app.post("/api/strategy")
 async def strategy_set(req: dict, request: Request):
-    """현재 적용 전략 파라미터 갱신 (사장 지시 2026-06-09: 프리셋 폐지 → custom params 전용)."""
+    """현재 프로필의 전략 파라미터를 갱신한다."""
     import runtime
     from main_swarm import _broadcast
-    uid = _require_trading(request)
+    uid = _require_strategy_uid(request)
     custom = (req or {}).get("params")
     if not custom:
         raise HTTPException(400, "params 필요")
+    # 사장 지시 2026-07-21: 대시보드 '변경값 적용/기본값 적용'은 사용자의 최종 결정이므로
+    # 운용지원(profile_overrides)보다 우선해야 한다. runtime.get 우선순위가
+    # profile_overrides > set_strategy(_states) 이므로, 사용자가 바꾼 값도 profile_overrides 에
+    # 함께 기록해야 실제로 반영된다(안 그러면 ops가 건드린 키에서 변경이 조용히 무시됨).
+    try:
+        from infra import profile_overrides as _po
+        from config import STRATEGY_TUNABLE_KEYS as _TK
+        _known = set(_TK)
+        _po.set_overrides(int(uid), {k: v for k, v in custom.items() if k in _known})
+    except Exception as _pe:
+        logger.warning("전략 변경 profile_overrides 반영 실패 uid=%s: %s", uid, _pe)
     active = runtime.set_strategy(custom=custom, by="dashboard", uid=uid)
     try:
         await _broadcast({"type": "status", "state": "IDLE",
@@ -1303,9 +1257,12 @@ async def strategy_set(req: dict, request: Request):
     return {"active": active}
 
 @app.get("/api/cycles")
-async def cycles(request: Request, limit: int = 50, offset: int = 0):
-    """Persisted analysis cycles (newest first). 사장 지시 2026-05-14 — 백테스트/장기 분석용."""
+async def cycles(request: Request, limit: int = 50, offset: int = 0, summary: int = 0):
+    """Persisted analysis cycles (newest first). 사장 지시 2026-05-14 — 백테스트/장기 분석용.
+    QuantInSight 이식(2026-07-18): summary=1 이면 사이클 탭 히스토리용 경량 목록(리포트 본문 제외)."""
     from infra import cycle_store
+    if summary:
+        return {"cycles": cycle_store.list_cycles_summary(limit, offset, uid=_read_uid(request))}
     return {"cycles": cycle_store.list_cycles(limit, offset, uid=_read_uid(request))}
 
 @app.get("/api/cycles/{cycle_id}")
@@ -1317,34 +1274,51 @@ async def cycle_detail(cycle_id: int, request: Request):
     return row
 
 @app.get("/api/ops_history")
-async def ops_history_endpoint(limit: int = 100):
+async def ops_history_endpoint(request: Request, limit: int = 100):
     """운용지원실장 자동 수정 이력 (사장 지시 2026-05-14). Newest-first 응답."""
     from infra import ops_history
     h = ops_history.load_history()
-    return {"history": list(reversed(h))[:max(1, int(limit))], "stats": ops_history.stats()}
+    from infra.strategy_research import list_proposals
+    from tools.stock_policy import status as policy_status
+    return {"history": list(reversed(h))[:max(1, int(limit))], "stats": ops_history.stats(),
+            "research": list_proposals(_read_uid(request)), "automatic_tuning": False,
+            "systematic": policy_status(_read_uid(request))}
 
 @app.websocket("/ws")
 async def ws_ep(ws: WebSocket):
-    # 사장 피드백 2026-05-16: WS는 HTTP 미들웨어를 안 타므로 여기서 직접 세션 검증.
-    # 쿠키(브라우저) 또는 ?token= (모바일/쿠키 불가 클라이언트) 둘 다 허용.
-    token = (ws.query_params.get("token")
-             or ws.cookies.get(auth_store.SESSION_COOKIE) or "").strip()
-    uid = auth_store.lookup_session(token)
-    if uid is None:
-        await ws.close(code=4401)  # 4401 = unauthorized (app-defined)
+    if ws.headers.get("origin") not in (None, "https://quantinsight.ai-ve.uk"):
+        await ws.close(code=4403)
+        return
+    try:
+        uid, expires = await asyncio.to_thread(cloudflare_access.verify,
+            ws.headers.get("Cf-Access-Jwt-Assertion", ""))
+    except (PermissionError, cloudflare_access.AccessNotConfigured):
+        await ws.close(code=4401)
         return
     # 사장 지시 2026-05-21: 모바일 네이티브 클라이언트(?client=mobile)는 프로필 알림설정으로
     # 4종 푸시를 게이트한다. 웹(기본)은 전부 수신.
     client = (ws.query_params.get("client") or "web").strip().lower()
-    view_uid = auth_store.admin_view_uid() if auth_store.is_viewer(uid) else uid
+    view_uid = (auth_store.admin_view_uid() if auth_store.is_viewer(uid)
+                else auth_store.resolve_profile_uid(uid))
     if view_uid is None:
         await ws.close(code=1013)
         return
     await ws_mgr.connect(ws, uid=uid, view_uid=view_uid,
                          client=("mobile" if client == "mobile" else "web"))
     try:
-        while True: await ws.receive_text()
-    except WebSocketDisconnect: ws_mgr.disconnect(ws)
+        import time
+        while True:
+            remaining = expires - time.time()
+            if remaining <= 0:
+                await ws.close(code=4401)
+                break
+            await asyncio.wait_for(ws.receive_text(), timeout=remaining)
+    except asyncio.TimeoutError:
+        await ws.close(code=4401)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws_mgr.disconnect(ws)
 
 SD = Path(__file__).parent / "static"; SD.mkdir(exist_ok=True)
 
@@ -1357,6 +1331,16 @@ async def dash():
     return HTMLResponse(content=content, headers={
         "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
 
+
+@app.get("/corp", response_class=HTMLResponse)
+async def corp():
+    """운용위원회 사무실 시각화(사장 지시 2026-09-25) — 대시보드 헤더 '시각화' 버튼.
+    말풍선은 /api/events·/ws 의 실제 agent_msg 다. 인증은 위 app_auth 미들웨어가 그대로 건다."""
+    p = SD / "corp.html"
+    return HTMLResponse(content=p.read_text(encoding="utf-8"), headers={
+        "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
+
+
 if SD.exists(): app.mount("/static", StaticFiles(directory=str(SD)), name="static")
 
 
@@ -1366,36 +1350,21 @@ if SD.exists(): app.mount("/static", StaticFiles(directory=str(SD)), name="stati
 #    전역 단일 활성 계정/단일 _task 개념은 폐지 — 유저별로 독립 재개한다.
 @app.on_event("startup")
 async def _auth_bootstrap():
+    # Credentials and trading ledgers remain encrypted in the private store.
+    # No password migration, registration or environment account seeding.
+    auth_store.init()
+
+
+# ─── 분봉 크롤러 — KOSPI200+KOSDAQ150 분봉 수집 (market_bars/, 구 Lag_Trading 크롤러 이관) ──
+# lead-lag 신호의 데이터원(data/bars.db). 별도 systemd 유닛 없이
+# 트레이딩 서버 프로세스 안에서 백그라운드 데몬 스레드로 돈다(사장 지시 2026-07-21).
+@app.on_event("startup")
+async def _start_bar_crawler():
     try:
-        auth_store.init()
+        from market_bars import start_background
+        start_background()
     except Exception as e:
-        logging.getLogger("auth_store").error("auth_store.init 실패(계속): %s", e)
-    try:
-        try:
-            auth_store.migrate_passwords_and_bidx()
-        except auth_store.FernetKeyLost:
-            logging.getLogger("auth_store").critical(
-                "부팅 마이그레이션 중단 — Fernet 키 분실(전 계정 복호 불능). 키 복구 필요.")
-            raise
-        except Exception as e:
-            logging.getLogger("auth_store").error("부팅 마이그레이션 실패(계속): %s", e)
-        # 전역 레거시 데이터(equity_curve 등)를 유저별 디렉토리로 1회 백업/이관 (멱등).
-        try:
-            from infra import data_migration
-            data_migration.migrate_once()
-        except Exception as _dme:
-            logging.getLogger("AUTH").warning("데이터 마이그레이션 실패(계속): %s", _dme)
-        seeded = auth_store.bootstrap_from_env()
-        if seeded:
-            logging.getLogger("AUTH").info("부팅 시드: .env → 프로필 user_id=%s", seeded)
-        # ITEM6: admin 계정에 매크로 붕괴 상시 지시사항 멱등 시드
-        try:
-            from infra.standing_directives import seed_admin_directive
-            seed_admin_directive()
-        except Exception as _sde:
-            logging.getLogger("AUTH").warning("상시지시 시드 실패(계속): %s", _sde)
-    except Exception as e:
-        logging.getLogger("AUTH").warning("인증 부트스트랩 실패: %s", e)
+        logging.getLogger("quantinsight.bars").warning("분봉 크롤러 시작 실패(계속): %s", e)
 
 
 # ─── 부팅 자동재개 — data/<uid>/.running 마커가 있는 유저별로 매매 루프를 다시 켠다 ───

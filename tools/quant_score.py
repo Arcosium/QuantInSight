@@ -51,6 +51,10 @@ def indicator_signals(ind: Dict[str, Any]) -> Dict[str, float]:
         s["flow"] = _clamp(float(ind["flow"]))        # 사전 정규화 수급 신호
     if ind.get("high52_prox") is not None:
         s["high52"] = _clamp((float(ind["high52_prox"]) - 0.5) / 0.5)
+    if ind.get("leadlag") is not None:
+        s["leadlag"] = _clamp(float(ind["leadlag"]))   # 선행-후행 신호는 이미 -1..1 (사장 지시 2026-07-21)
+    if ind.get("vol_surge") is not None:
+        s["vol_surge"] = _clamp(float(ind["vol_surge"]))   # 거래량 급증: +100%(2배)→+1 (사장 지시 2026-07-21)
     return s
 
 
@@ -74,6 +78,35 @@ def macro_score(stock_pct: Optional[float]) -> Optional[float]:
     if stock_pct is None:
         return None
     return _clamp(5.0 + 5.0 * _clamp((float(stock_pct) - 15.0) / 25.0), 0.0, 10.0)
+
+
+# ── 알파 귀인 태그 (P2, 사장 지시 2026-08-02) ────────────────────────────────
+# "이 매수는 어느 알파에서 나왔나" 를 남기지 않으면 알파별 성과·상관을 영원히 알 수 없다.
+# 점수 breakdown 에 이미 축별 기여도가 있으므로 LLM 호출 없이 결정론으로 태깅한다.
+ALPHA_FAMILY = {
+    "mom": "모멘텀", "high52": "모멘텀", "macd": "모멘텀",
+    "adx": "추세",
+    "rsi": "평균회귀", "vwap": "평균회귀",
+    "vol": "저변동",
+    "cmf": "수급", "flow": "수급",
+    "vol_surge": "거래량이벤트", "leadlag": "선행-후행",
+}
+
+
+def alpha_tag(breakdown: Optional[Dict[str, Any]]) -> str:
+    """점수 breakdown → 이 진입을 끌어올린 알파 계열 1개.
+
+    breakdown 은 assemble_quant_score 반환값({S_quant,S_news,S_macro,indicators}).
+    뉴스 점수가 강하고(≥7.5) 퀀트보다 우위면 '뉴스이벤트', 아니면 기여도 최대 지표 축의 계열.
+    가점 축이 하나도 없으면(전부 감점) '기타' — 억지 분류 금지."""
+    bd = breakdown or {}
+    ind = bd.get("indicators") or {}
+    top = max(((k, float(v)) for k, v in ind.items() if float(v) > 0),
+              key=lambda kv: kv[1], default=None)
+    news, quant = bd.get("S_news"), bd.get("S_quant")
+    if news is not None and float(news) >= 7.5 and (quant is None or float(news) > float(quant)):
+        return "뉴스이벤트"
+    return ALPHA_FAMILY.get(top[0], top[0]) if top else "기타"
 
 
 def combine_dimensions(scores: Dict[str, Optional[float]], dw: Dict[str, float]) -> float:

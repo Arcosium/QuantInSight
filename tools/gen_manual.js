@@ -102,30 +102,30 @@ children.push(note("핵심", "사용자가 매번 종목을 고를 필요가 없
 
 // 2. 준비물
 children.push(H1("2. 시작하기 전에 — 준비물"));
-children.push(P("회원가입 시 DeepSeek API 키와 KIS 키·계좌번호가 필요합니다. 관전 모드는 아이디와 비밀번호만으로 가입할 수 있습니다."));
+children.push(P("회원가입 시 로컬 LLM와 KIS 키·계좌번호가 필요합니다. 관전 모드는 아이디와 비밀번호만으로 가입할 수 있습니다."));
 children.push(table(
   ["항목", "필수", "용도"],
   [
-    ["DeepSeek API Key", "필수", "모든 AI 분석 호출에 사용 (비용 발생)"],
+    ["로컬 LLM", "필수", "모든 AI 분석 호출에 사용 (비용 발생)"],
     ["KIS App Key / Secret", "거래 시 필수", "한국투자증권 시세 조회·주문"],
     ["KIS 계좌번호", "거래 시 필수", "실거래가 일어나는 계좌"],
     ["거래 환경", "거래 시 필수", "실전투자 / 모의투자 중 선택 (Base URL 자동 설정)"],
   ],
   [2600, 1400, 5360]));
-children.push(note("비용 안내", "AI 분석은 DeepSeek 공식 API 사용량에 따라 과금됩니다. 화면 우상단에서 추정 비용을 확인할 수 있습니다."));
+children.push(note("비용 안내", "AI 분석은 로컬 LLM 서버 사용량에 따라 과금됩니다. 화면 우상단에서 추정 비용을 확인할 수 있습니다."));
 children.push(P("아래 2.1~2.2는 위 키를 처음 발급받는 분을 위한 단계별 안내입니다. 발급한 키는 3장(회원가입) 화면에 그대로 붙여넣으면 됩니다. (각 사이트의 메뉴 이름은 바뀔 수 있으니, 굵게 표시한 동작 흐름과 주소를 기준으로 따라오세요.)"));
 
-children.push(H2("2.1 DeepSeek API 키 발급 (필수)"));
-children.push(P("DeepSeek 공식 API 키는 ArQuant의 모든 AI 분석과 Hermes 검색 리서치에 사용됩니다."));
+children.push(H2("2.1 로컬 LLM 발급 (필수)"));
+children.push(P("로컬 LLM 서버 키는 ArQuant의 모든 AI 분석과 Hermes 검색 리서치에 사용됩니다."));
 children.push(P("1) 웹브라우저에서 아래 주소에 접속합니다.", { run: { bold: true } }));
-children.push(P(null, { children: [new TextRun("    → "), link("https://platform.deepseek.com", "https://platform.deepseek.com")] }));
+children.push(P(null, { children: [new TextRun("    → "), link("http://127.0.0.1:8080/v1", "http://127.0.0.1:8080/v1")] }));
 children.push(P("2) 우측 상단 ‘Sign in’을 눌러 Google·GitHub 또는 이메일로 가입/로그인합니다."));
 children.push(P("3) 로그인 후 키 발급 페이지로 이동합니다."));
-children.push(P("DeepSeek Platform에서 API Key를 생성합니다."));
+children.push(P("로컬 LLM 서버에서 API Key를 생성합니다."));
 children.push(P("4) ‘Create Key’(키 만들기)를 누르고 이름을 자유롭게(예: arquant) 입력한 뒤 생성합니다."));
 children.push(P("5) 화면에 표시된 키(sk- 로 시작)를 즉시 복사합니다. 이 키는 다시 볼 수 없으니 안전한 곳에 보관하세요."));
 children.push(P("6) 크레딧(사용 금액)을 충전합니다. 충전이 없으면 분석이 멈춥니다."));
-children.push(P("DeepSeek Platform의 Billing 메뉴에서 사용량과 잔액을 관리합니다."));
+children.push(P("로컬 LLM 서버의 Billing 메뉴에서 사용량과 잔액을 관리합니다."));
 children.push(note("확인", "올바른 키는 sk- 로 시작합니다. 크레딧이 0이 되면 AI 분석이 중단되며, 화면의 💵 배지를 누르면 잔액 확인·충전 페이지로 연결됩니다(13장)."));
 
 children.push(H2("2.2 한국투자증권(KIS) App Key·Secret 발급 (실거래 필수)"));
@@ -146,7 +146,7 @@ children.push(P("‘최초 등록’ 탭에서 아래 항목을 입력하고 ‘
 [
   "아이디 — 3자 이상. 입력하면 실시간으로 중복 여부를 확인해 줍니다(✓ 사용 가능 / ✗ 이미 사용 중).",
   "비밀번호 — 10자 이상 + 특수문자 1개 이상(실시간 충족 여부 표시).",
-  "DeepSeek API Key — 필수.",
+  "로컬 LLM — 필수.",
   "한국투자증권 App Key / App Secret — 거래 시 필요(선택 입력 가능).",
   "한국투자증권 계좌번호 — 예: 12345678-01.",
   "거래 환경 — ‘실전투자(실거래)’ 또는 ‘모의투자(페이퍼)’ 중 선택(Base URL 자동 설정).",
@@ -324,11 +324,11 @@ children.push(note("운용지원실장의 역할", "운용지원실장은 코드
 
 // 13. API 비용
 children.push(H1("13. API 비용 확인"));
-children.push(P("상단바의 💵 배지는 DeepSeek API 사용량을 공식 모델 단가로 계산한 추정 비용입니다."));
+children.push(P("상단바의 💵 배지는 로컬 LLM API 사용량을 공식 모델 단가로 계산한 추정 비용입니다."));
 children.push(P("표시 단위(시간당 / 일별 / 월별 / 총 누적)는 프로필 모달의 ‘API 비용 표시’에서 고를 수 있습니다(계정별 적용)."));
 children.push(new Paragraph({ spacing: { after: 120, line: 312 }, children: [
   new TextRun("💵 배지를 클릭하면 "),
-  link("DeepSeek Platform", "https://platform.deepseek.com"),
+  link("로컬 LLM 서버", "http://127.0.0.1:8080/v1"),
   new TextRun("가 열립니다. 여기서 잔여 크레딧을 확인하고 충전할 수 있습니다."),
 ]}));
 children.push(note("팁", "크레딧이 소진되면 AI 분석이 중단됩니다. 비용 배지를 주기적으로 확인하고 미리 충전해 두세요."));
@@ -355,7 +355,7 @@ children.push(P("상단바의 👤 버튼을 누르면 내 계정 설정 창이 
 children.push(H2("15.1 비밀번호 변경"));
 children.push(P("현재 비밀번호를 확인한 뒤 새 비밀번호(10자 이상 + 특수문자 1개 이상)로 바꿉니다."));
 children.push(H2("15.2 정보 변경 (API 자격증명)"));
-children.push(P("DeepSeek Key · KIS App Key/Secret · 계좌번호 · 거래 환경을 변경할 수 있습니다. 입력한 값은 실제 호출로 검증됩니다."));
+children.push(P("로컬 LLM · KIS App Key/Secret · 계좌번호 · 거래 환경을 변경할 수 있습니다. 입력한 값은 실제 호출로 검증됩니다."));
 children.push(note("주의", "계정 복구는 ‘계좌번호 + App Secret’으로 본인을 확인합니다. 이 두 값을 바꾸면 이후 복구 시 새 값을 입력해야 합니다."));
 children.push(H2("15.3 지시사항 관리 (상시 지시)"));
 children.push(P("내 계정에만 적용되는 운용 원칙을 영구 등록할 수 있습니다(예: 방어 자산 우선 등). 주식운용실장이 매 사이클 참고합니다. 추가/삭제가 자유로우며, 삭제한 지시는 서버를 재시작해도 다시 살아나지 않습니다."));
@@ -392,8 +392,8 @@ const faq = [
   ["거래 내역을 비우면 승률이 사라지나요?", "아니요. 거래 내역을 비워도 승률·통계는 따로 적립되어 유지되고, 누적수익 곡선도 별도 보존됩니다(8.2)."],
   ["수익률 차트가 평가금액이 아니라 이상해요.", "차트는 ‘평가금액’이 아니라 시작점을 0원으로 둔 누적수익(원)입니다(7.2). 잔고 절대값은 보유종목 탭에서 보세요."],
   ["DART 키는 어디에 넣나요?", "넣지 않습니다. 공시·재무 재심은 시스템이 자체 키로 자동 수행합니다."],
-  ["API 비용은 어디서 확인하나요?", "상단 💵 배지와 DeepSeek Platform의 Billing 메뉴에서 확인합니다."],
-  ["AI 분석이 갑자기 멈췄어요.", "DeepSeek API 키와 잔액, 네트워크 상태를 확인하세요."],
+  ["API 비용은 어디서 확인하나요?", "상단 💵 배지와 로컬 LLM 서버의 Billing 메뉴에서 확인합니다."],
+  ["AI 분석이 갑자기 멈췄어요.", "로컬 LLM와 잔액, 네트워크 상태를 확인하세요."],
   ["버그를 발견했거나 건의할 게 있어요.", "프로필 창의 ‘피드백/버그 제보’에서 종류를 골라 보내면 운영자가 확인 후 답글을 답니다. 답글이 오면 👤 버튼에 빨간 점이 뜹니다(15.6)."],
   ["아이디나 비밀번호를 잊었어요.", "로그인 화면의 ‘아이디/비밀번호를 잊으셨나요?’를 쓰세요. 가입 때 입력한 계좌번호 + App Secret으로 본인을 확인합니다(3.3). 이메일·문자 인증은 없으니 이 두 값을 꼭 보관하세요."],
   ["@운용지원실장에게 설정을 바꿔달라고 했는데 안 바뀌어요.", "운용지원실장은 코드·설정을 직접 바꾸지 않고 ‘진단·제안’만 합니다. 전략 값은 10장 ‘전략 커스터마이즈’에서 직접 적용하세요."],

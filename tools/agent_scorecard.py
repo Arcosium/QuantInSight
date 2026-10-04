@@ -36,6 +36,11 @@ def _pearson(xs: List[float], ys: List[float]) -> Optional[float]:
     return cov / (vx ** 0.5 * vy ** 0.5)
 
 
+def pearson(xs: List[float], ys: List[float]) -> Optional[float]:
+    """피어슨 상관 (3쌍 미만·무분산이면 None). 프로필 수익률 상관 등 외부 호출용 공개 래퍼."""
+    return _pearson(xs, ys)
+
+
 def information_coefficient(pairs: List[Tuple[float, float]]) -> Optional[float]:
     """[(signal, forward_return)] → 스피어만 순위상관. 3쌍 미만이면 None."""
     pairs = [(float(s), float(r)) for s, r in pairs if s is not None and r is not None]
@@ -43,6 +48,40 @@ def information_coefficient(pairs: List[Tuple[float, float]]) -> Optional[float]
         return None
     sigs = [p[0] for p in pairs]; rets = [p[1] for p in pairs]
     return _pearson(_rank(sigs), _rank(rets))
+
+
+def confidence_from_ic(ic, n, *, min_n: int = 20, full_n: int = 100,
+                       scale: float = 2.5, floor: float = 0.1, cap: float = 1.0) -> float:
+    """에이전트 예측력(IC) → 0~1 확신도 (2026-06-15 ROI#2). 블랙-리터만 Ω·사이징 틸트의 입력.
+    표본(n)이 min_n 미만이거나 IC 없음 → 중립 0.5(과신 방지). IC 음수(역사적 오답) → 0.5 미만.
+    표본이 min_n~full_n 사이면 중립 쪽으로 축소(작은 표본 과신 방지)."""
+    if ic is None or n is None or n < min_n:
+        return 0.5
+    raw = 0.5 + float(ic) * scale
+    conf = max(floor, min(cap, raw))
+    w = max(0.0, min(1.0, (n - min_n) / max(1, full_n - min_n)))  # 표본 신뢰 가중
+    return round(0.5 + (conf - 0.5) * w, 3)
+
+
+def quant_confidence(uid, *, window_days: int = 30, max_signals: int = 300):
+    """라이브 스코어카드에서 퀀트 신호의 IC 를 산출해 0~1 확신도로 (2026-06-15 ROI#2 배선).
+    반환 (confidence, ic, n). 표본/데이터 부족이면 (0.5, None, 0). 베스트에포트(예외 시 중립)."""
+    try:
+        from infra import scorecard_store
+        from tools.market_data import forward_return_after
+        sigs = scorecard_store.list_signals(uid=uid, limit=max_signals)
+        pairs = []
+        for s in (sigs or []):
+            if s.get("quant_score") is None:
+                continue
+            fwd = forward_return_after(s.get("code"), s.get("ts"), window_days)
+            if fwd is None:
+                continue
+            pairs.append((float(s["quant_score"]), float(fwd)))
+        ic = information_coefficient(pairs)
+        return confidence_from_ic(ic, len(pairs)), ic, len(pairs)
+    except Exception:
+        return 0.5, None, 0
 
 
 def slippage_stats(fills: List[Dict]) -> Dict:

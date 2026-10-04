@@ -13,7 +13,7 @@ from infra.user_context import UserContext
 
 
 @pytest.fixture(autouse=True)
-def _isolate_from_live(monkeypatch):
+def _isolate_from_live(monkeypatch, isolate_orchestrator_data):
     """이 테스트는 실제 uid 에 바인딩된 오케스트레이터로 ceo_directive 를 호출하므로, 라이브 부작용
     (워커 subprocess spawn·LLM 호출·param_overrides 변경·대시보드 broadcast·응답로그 기록)을 반드시
     차단한다. 검증 대상은 ceo_directive 의 '동기 반환(라우팅·문구)'뿐이다.
@@ -32,7 +32,7 @@ def _ctx(uid, admin):
     return UserContext({"id": uid, "username": f"u{uid}", "is_admin": admin,
         "kis_app_key": "K", "kis_app_secret": "S", "kis_account_no": "1-01",
         "kis_base_url": "https://openapivts.koreainvestment.com:29443",
-        "deepseek_api_key": "DS", "dart_key": "", "label": "x"})
+        "dart_key": "", "label": "x"})
 
 
 def test_non_admin_ops_support_not_refused_and_no_admin_id_leak():

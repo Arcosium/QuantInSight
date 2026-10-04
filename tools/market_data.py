@@ -5,13 +5,20 @@ Adapted from KRX Quant Simulator CrawlerUtil:
   - 종목 3년치 일봉 + 수급 크롤링 (네이버 금융 HTML)
   - 분봉 데이터는 KIS API 사용 (kis_broker.kr_minute_chart)
 """
-import os, csv, re, json, logging, time
-from datetime import datetime, timedelta
+import csv, re, json, logging, time
+from datetime import datetime, timedelta, timezone
+
+KST = timezone(timedelta(hours=9))
 from pathlib import Path
 from typing import List, Dict, Optional
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+
+try:  # 공용 시세(EOD) 레이어 — pykrx/yfinance 우선 (사장 지시 2026-07-02), 실패 시 네이버 크롤 폴백
+    import arcmarket
+except ImportError:
+    arcmarket = None
 
 logger = logging.getLogger("MARKET_DATA")
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -22,7 +29,9 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 # Robust sources (JSON APIs where possible). Each entry: {name, kind, sym}.
 #   kind="domestic" → polling.finance.naver.com/api/realtime/domestic/index/{sym}
 #   kind="world"    → api.stock.naver.com/index/{sym}/basic
-#   kind="fx"/"oil" → scrape finance.naver.com/marketindex/ (#exchangeList / #oilGoldList first item)
+#   kind="fx"/"oil" → api.stock.naver.com/marketindex/{exchange|energy}/{sym}
+#     (2026-09-25: finance.naver.com/marketindex 가 stock.naver.com 으로 이관돼 HTML 스크랩이
+#      9/16부터 조용히 ok=False — 환율 캐시가 1,500원에 9일 고착됐다.)
 INDEX_WATCHLIST = {
     "KOSPI":  {"name":"코스피",       "kind":"domestic", "sym":"KOSPI"},
     "KOSDAQ": {"name":"코스닥",       "kind":"domestic", "sym":"KOSDAQ"},
@@ -33,7 +42,7 @@ INDEX_WATCHLIST = {
     "SHS":    {"name":"상해종합",     "kind":"world",    "sym":".SSEC"},
     "NKY":    {"name":"니케이225",    "kind":"world",    "sym":".N225"},
     "USDKRW": {"name":"원/달러 환율", "kind":"fx",       "sym":"FX_USDKRW"},
-    "WTI":    {"name":"WTI 원유",     "kind":"oil",      "sym":"OIL_CL"},
+    "WTI":    {"name":"WTI 원유",     "kind":"oil",      "sym":"CLcv1"},
 }
 
 _NUM_RE = None
@@ -58,28 +67,21 @@ def _fetch_world(sym: str) -> Dict:
             "change": _to_float(d.get("compareToPreviousClosePrice")),
             "rate": _to_float(d.get("fluctuationsRatio")), "ok": True}
 
-def _fetch_marketindex_first(list_id: str) -> Dict:
-    r = requests.get("https://finance.naver.com/marketindex/", headers=HEADERS, timeout=8)
-    r.encoding = "euc-kr"
-    soup = BeautifulSoup(r.text, "html.parser")
-    li = soup.select_one(f"#{list_id} li")
-    if not li:
-        return {"value": None, "change": None, "rate": None, "ok": False}
-    val = _to_float(li.select_one(".value").get_text() if li.select_one(".value") else None)
-    chg = _to_float(li.select_one(".change").get_text() if li.select_one(".change") else None)
-    # direction: <span class="blind">하락</span> etc, or class 'up'/'down'
-    txt = li.get_text(" ", strip=True)
-    if chg is not None and ("하락" in txt or "down" in (li.get("class") or [])):
-        chg = -abs(chg)
-    return {"value": val, "change": chg, "rate": None, "ok": val is not None}
+def _fetch_marketindex(category: str, sym: str) -> Dict:
+    r = requests.get(f"https://api.stock.naver.com/marketindex/{category}/{sym}", headers=HEADERS, timeout=8)
+    d = r.json()
+    d = d.get("exchangeInfo") or d          # 환율은 exchangeInfo 아래, 유가는 최상위
+    val = _to_float(d.get("closePrice"))
+    return {"value": val, "change": _to_float(d.get("fluctuations")),
+            "rate": _to_float(d.get("fluctuationsRatio")), "ok": val is not None}
 
 def _fetch_index(key: str) -> Dict:
     info = INDEX_WATCHLIST[key]
     try:
         if info["kind"] == "domestic":  return _fetch_domestic(info["sym"])
         if info["kind"] == "world":     return _fetch_world(info["sym"])
-        if info["kind"] == "fx":        return _fetch_marketindex_first("exchangeList")
-        if info["kind"] == "oil":       return _fetch_marketindex_first("oilGoldList")
+        if info["kind"] == "fx":        return _fetch_marketindex("exchange", info["sym"])
+        if info["kind"] == "oil":       return _fetch_marketindex("energy", info["sym"])
     except Exception as e:
         logger.warning(f"[지수] {key} 조회 실패: {e}")
     return {"value": None, "change": None, "rate": None, "ok": False}
@@ -174,11 +176,17 @@ def kr_price_naver(code: str) -> float:
 
 
 _NAME_CACHE: Dict[str, str] = {}
+_NAME_MISS: set = set()          # 조회 실패 심볼(프로세스 수명) — 반복 404 억제, 재시작 시 재검증
 def get_stock_name(code: str) -> str:
-    """Resolve a 6-digit KR stock code to its Korean name (cached). '' on failure."""
+    """종목코드 → 종목명(캐시). KR=6자리 코드(네이버), US=영문 티커(yfinance). '' on failure.
+
+    US 분기 추가 2026-08-04: 후보 검증이 KR 만 있고 US 는 무검증이라 'Rocket Lab(RVLV)'
+    (실제 RVLV=Revolve Group) 같은 티커 오배정이 그대로 통과하던 문제."""
     code = str(code).strip()
     if code in _NAME_CACHE:
         return _NAME_CACHE[code]
+    if not re.fullmatch(r"\d{6}", code):
+        return _us_stock_name(code)
     name = ""
     try:
         r = requests.get(f"https://polling.finance.naver.com/api/realtime/domestic/stock/{code}",
@@ -196,6 +204,38 @@ def get_stock_name(code: str) -> str:
     if name:
         _NAME_CACHE[code] = name
     return name
+
+
+def _us_stock_name(ticker: str) -> str:
+    """US 티커 → 회사명(yfinance, 캐시). 실패 시 '' — **호출부는 fail-open** 이어야 한다
+    (네트워크 장애로 US 후보가 통째로 사라지면 안 됨; 없는 티커는 하류 일봉 게이트가 거른다)."""
+    t = str(ticker).strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z.\-]{0,5}", t) or t in _NAME_MISS:
+        return ""
+    name = ""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(t).info or {}
+        name = (info.get("longName") or info.get("shortName") or "").strip()
+    except Exception:
+        name = ""
+    if name:
+        _NAME_CACHE[t] = name
+    else:
+        _NAME_MISS.add(t)
+    return name
+
+
+def canonical_name(code: str, fallback: str = "", resolver=get_stock_name) -> str:
+    """코드의 **권위(정본) 종목명**. 버그 2026-06-12: 뉴스/센티(LLM)와 계량(데이터제공자)이
+    코드→이름을 따로 만들어 불일치(241520=PKC vs DSC인베스트먼트). 결정·thesis 기록엔
+    코드 기준 정본 이름을 쓴다. resolver 실패('')면 fallback(보통 LLM 이름)으로 폴백.
+    resolver 는 테스트 주입용(기본 get_stock_name)."""
+    try:
+        nm = (resolver(code) or "").strip()
+    except Exception:
+        nm = ""
+    return nm or (fallback or "").strip()
 
 
 _CODE_CACHE: Dict[str, str] = {}
@@ -245,7 +285,14 @@ def format_indices_for_macro(data: Optional[Dict[str, Dict]] = None) -> str:
     rows, missing = [], []
     for key, d in data.items():
         if d["ok"]:
-            r = f"{d['rate']:+.2f}%" if d["rate"] is not None else "n/a"
+            # 등락률이 없을 때(WTI 등 일부 소스) 전일대비·현재가로 역산 — 'n/a' 를 LLM이
+            # '+0.70.00' 처럼 깨뜨려 인용하던 문제 방지(사장 지시 2026-07-21).
+            _rate = d["rate"]
+            if _rate is None and d.get("change") is not None and d.get("value"):
+                _prev = d["value"] - d["change"]
+                if _prev:
+                    _rate = d["change"] / _prev * 100.0
+            r = f"{_rate:+.2f}%" if _rate is not None else "n/a"
             c = f"{d['change']:+,.2f}" if d["change"] is not None else "n/a"
             rows.append(f"- {d['name']} ({key}): 현재가={d['value']:,.2f} | 전일대비={c} | 등락률={r}")
         else:
@@ -264,6 +311,25 @@ def fetch_stock_daily(code: str, years: int = 3) -> pd.DataFrame:
     """
     csv_path = DATA_DIR / f"daily_{code}.csv"
     stop_date = _get_csv_latest_date(csv_path)
+
+    # 1순위 arcmarket(pykrx/yfinance) — 성공하면 크롤 없이 같은 CSV 규격으로 누적
+    if arcmarket is not None:
+        try:
+            df = arcmarket.kr_daily(code, days=int(years * 365))
+            if df is not None and not df.empty:
+                if stop_date is not None:
+                    df = df[df.index >= pd.to_datetime(stop_date)]  # 당일 봉 upsert 갱신 유지
+                df = df.fillna(0)
+                rows = [{'date': d.strftime('%Y-%m-%d'), 'open': int(x['open']),
+                         'high': int(x['high']), 'low': int(x['low']),
+                         'close': int(x['close']), 'volume': int(x['volume'])}
+                        for d, x in df.iterrows()]
+                if rows:
+                    _append_csv(csv_path, rows, ['date', 'open', 'high', 'low', 'close', 'volume'])
+                    logger.info(f"[일봉] {code}: arcmarket {len(rows)}건 (pykrx/yfinance)")
+                    return pd.DataFrame(rows)
+        except Exception as e:
+            logger.warning(f"[일봉] {code} arcmarket 실패 — 네이버 폴백: {e}")
 
     result = []
     max_pages = int(years * 26) + 10
@@ -287,7 +353,9 @@ def fetch_stock_daily(code: str, years: int = 3) -> pd.DataFrame:
                     if not date_text:
                         continue
                     date = pd.to_datetime(date_text)
-                    if stop_date and date <= stop_date:
+                    # '<=' → '<' : 최신 날짜(당일 포함)는 다시 수집해 _append_csv upsert 로 갱신한다
+                    # (당일 봉이 첫 조회값에 고정되던 버그 2026-06-15 수정).
+                    if stop_date and date < stop_date:
                         break
                     if date < target_limit:
                         break
@@ -323,44 +391,25 @@ def fetch_investor_data(code: str, years: int = 3) -> pd.DataFrame:
     stop_date = _get_csv_latest_date(csv_path)
 
     result = []
-    max_pages = int(years * 26) + 5
     target_limit = datetime.today() - timedelta(days=years * 365)
 
     logger.info(f"[수급] {code} 크롤링 시작")
 
+    # 2026-09-25: finance.naver.com/item/frgn.nhn 이 stock.naver.com 으로 이관돼 9/10 부터 전 종목 수급이
+    # 조용히 멈췄다. 모바일 JSON(최근 약 60거래일, page 인자 없음)으로 바꾼다. 값은 옛 표와 같은 순매매
+    # 수량(주)이다(005930 9/8·9/9 대조 일치). 60거래일보다 오래 끊긴 종목은 그 사이가 빈다.
     try:
-        for page in range(1, max_pages + 1):
-            url = f"https://finance.naver.com/item/frgn.nhn?code={code}&page={page}"
-            try:
-                res = requests.get(url, headers=HEADERS, timeout=5)
-                soup = BeautifulSoup(res.text, 'lxml')
-                rows = soup.select('table.type2 tr')
-                valid = 0
-                for row in rows:
-                    cols = row.find_all('td')
-                    if not cols or not cols[0].text.strip() or len(cols) < 7:
-                        continue
-                    try:
-                        date_str = cols[0].text.strip().replace('.', '-')
-                        date = pd.to_datetime(date_str)
-                        if stop_date and date <= stop_date:
-                            break
-                        if date < target_limit:
-                            break
-                        inst = int(cols[5].text.strip().replace(',', '').replace('+', ''))
-                        frgn = int(cols[6].text.strip().replace(',', '').replace('+', ''))
-                        result.append({'date': date.strftime('%Y-%m-%d'),
-                                       'inst_net': inst, 'foreign_net': frgn})
-                        valid += 1
-                    except:
-                        continue
-                if valid == 0 and page > 5:
-                    break
-            except:
+        res = requests.get(f"https://m.stock.naver.com/api/stock/{code}/trend?pageSize=60",
+                           headers=HEADERS, timeout=8)
+        for x in res.json():
+            date = pd.to_datetime(str(x.get("bizdate")))
+            if (stop_date and date <= stop_date) or date < target_limit:
                 continue
-            time.sleep(0.15)
+            _n = lambda v: int(str(v).replace(',', '').replace('+', ''))
+            result.append({'date': date.strftime('%Y-%m-%d'),
+                           'inst_net': _n(x["organPureBuyQuant"]), 'foreign_net': _n(x["foreignerPureBuyQuant"])})
     except Exception as e:
-        logger.error(f"[수급] {code} 크롤링 오류: {e}")
+        logger.error(f"[수급] {code} 조회 오류: {e}")
 
     if result:
         _append_csv(csv_path, result, ['date', 'inst_net', 'foreign_net'])
@@ -416,9 +465,12 @@ def crawl_company_full(code: str, kis_broker=None) -> str:
     # Build quant summary if data exists
     if total_daily > 0:
         try:
-            df = pd.read_csv(csv_daily).sort_values('date')
+            df = pd.read_csv(csv_daily).sort_values('date').reset_index(drop=True)
+            df = _strip_trailing_zero_volume(df)   # 프리마켓 진행 중(거래량 0) 행 제거 → '장 마감' 오인 방지
+            df = _strip_provisional_today(df, datetime.now(KST).strftime('%Y-%m-%d'))  # 당일 미완성봉 제외
             latest = df.iloc[-1]
-            summary += f"\n  최근({latest['date']}): 종가 {latest.get('close','-')} | 거래량 {latest.get('volume','-')}"
+            summary += (f"\n  최근(완성봉 {latest['date']}): 종가 {latest.get('close','-')} | "
+                        f"거래량 {latest.get('volume','-')} · ⓘ 당일봉은 장중 미완성이라 비교 제외")
         except Exception:
             pass
     else:
@@ -426,6 +478,34 @@ def crawl_company_full(code: str, kis_broker=None) -> str:
 
     summary += f"\n  CSV: {csv_daily.name}, {csv_inv.name}"
     return summary
+
+
+def _strip_trailing_zero_volume(df: pd.DataFrame) -> pd.DataFrame:
+    """말미의 거래량 0 행(프리마켓 등 '장 시작 전' 진행 중 placeholder)을 제거한다.
+
+    프리마켓 사이클이 당일 거래량 0 행을 CSV 에 누적하면 퀀트가 '장 마감'으로 오인하고
+    지표가 하루 stale 해진다(2026-06-15). 말미(trailing)만 떼고 중간 거래정지(0거래량) 행은
+    보존하며, 전부 0이면 최소 1행을 남긴다(fail-open)."""
+    if df is None or df.empty or 'volume' not in df.columns:
+        return df
+    vol = pd.to_numeric(df['volume'], errors='coerce').fillna(0)
+    keep = len(df)
+    while keep > 1 and vol.iloc[keep - 1] <= 0:
+        keep -= 1
+    return df.iloc[:keep].reset_index(drop=True) if keep < len(df) else df
+
+
+def _strip_provisional_today(df: pd.DataFrame, today_str: str) -> pd.DataFrame:
+    """당일(미완성) 봉을 시계열에서 제외 — 장중 부분 거래량을 전일 '전체'와 비교해 '거래량 98%
+    급감'으로 오독하는 것을 막는다(2026-06-15). 현재가 사이징은 라이브 호가(kr_last_price)를
+    쓰므로 영향 없음. 말미 기준 당일(또는 그 이후) 행만 떼고 전부 당일이면 최소 1행 유지."""
+    if df is None or df.empty or 'date' not in df.columns:
+        return df
+    d = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+    keep = len(df)
+    while keep > 1 and d.iloc[keep - 1] >= today_str:
+        keep -= 1
+    return df.iloc[:keep].reset_index(drop=True) if keep < len(df) else df
 
 
 def load_daily_csv(code: str) -> Optional[pd.DataFrame]:
@@ -442,7 +522,10 @@ def load_daily_csv(code: str) -> Optional[pd.DataFrame]:
         if df.empty:
             return None
         df['date'] = pd.to_datetime(df['date'])
-        return df.sort_values('date').reset_index(drop=True)
+        df = df.sort_values('date').reset_index(drop=True)
+        df = _strip_trailing_zero_volume(df)
+        # 당일 미완성 봉 제외 — 완성된 봉으로만 지표·거래량 비교(2026-06-15).
+        return _strip_provisional_today(df, datetime.now(KST).strftime('%Y-%m-%d'))
     except Exception:
         return None
 
@@ -613,6 +696,23 @@ def compute_quant_indicators(code: str, daily=None, investor=None) -> dict:
     cmf = _cmf(daily, 20)
     if cmf is not None:
         out["cmf"] = cmf
+    # 거래량 급증(사장 지시 2026-07-21) — 당일 거래량 / 직전 20일 평균 - 1 (0=평균, +1=2배)
+    try:
+        _vol = daily['volume'].astype(float)
+        if len(_vol) >= 21:
+            _avg20 = float(_vol.iloc[-21:-1].mean())
+            if _avg20 > 0:
+                out["vol_surge"] = float(_vol.iloc[-1]) / _avg20 - 1.0
+    except Exception:
+        pass
+    # 갭업(사장 지시 2026-07-21) — 당일 시가 대비 전일 종가 %(추격 회피 필터용, 신호 아님)
+    try:
+        if len(daily) >= 2 and 'open' in daily.columns:
+            _pc = float(close.iloc[-2]); _to = float(daily['open'].astype(float).iloc[-1])
+            if _pc > 0:
+                out["gap_up_pct"] = (_to / _pc - 1.0) * 100.0
+    except Exception:
+        pass
     # flow — 외인+기관 순매수를 거래량 대비 비율로 정규화([-1,1] 사전정규화 신호)
     if investor is not None and len(investor) > 0:
         try:
@@ -732,20 +832,37 @@ def _get_csv_latest_date(path: Path) -> Optional[pd.Timestamp]:
 
 
 def _append_csv(path: Path, rows: List[Dict], columns: List[str]):
-    """CSV에 중복 없이 추가"""
+    """CSV upsert — 키(columns[0], 보통 date/datetime)가 같은 행은 **덮어쓴다**.
+    당일 봉이 첫 조회값에 고정되던 버그(2026-06-15) 수정: 같은 날짜를 스킵하지 않고 갱신해
+    장중 거래량·종가가 최신화되고, 장 마감 후 완성봉으로 확정된다. 겹침이 없으면 기존처럼 append."""
+    if not rows:
+        return
+    key = columns[0]
+    new_keys = {str(r.get(key, '')) for r in rows if str(r.get(key, '')) != ''}
+    existing = None
     seen = set()
     if path.exists():
         try:
             existing = pd.read_csv(path)
-            seen = set(existing['date'].astype(str))
-        except:
-            pass
-    new_rows = [r for r in rows if str(r.get('date', '')) not in seen]
-    if not new_rows:
+            seen = set(existing[key].astype(str))
+        except Exception:
+            existing = None
+    overlap = new_keys & seen
+    if not overlap:
+        # 빠른 경로 — 겹치는 날짜 없음 → 신규 행만 append
+        fresh = [r for r in rows if str(r.get(key, '')) != '' and str(r.get(key, '')) not in seen]
+        if not fresh:
+            return
+        exists = path.exists()
+        with open(path, 'a', newline='', encoding='utf-8') as f:
+            w = csv.DictWriter(f, fieldnames=columns)
+            if not exists:
+                w.writeheader()
+            w.writerows(fresh)
         return
-    exists = path.exists()
-    with open(path, 'a', newline='', encoding='utf-8') as f:
-        w = csv.DictWriter(f, fieldnames=columns)
-        if not exists:
-            w.writeheader()
-        w.writerows(new_rows)
+    # 겹침 → 동일 키 덮어쓰기 (read-modify-write)
+    new_df = pd.DataFrame(rows)[columns].drop_duplicates(subset=[key], keep='last')
+    base = existing[~existing[key].astype(str).isin(new_keys)] if existing is not None else None
+    merged = pd.concat([base, new_df], ignore_index=True) if base is not None else new_df
+    merged = merged.sort_values(key).reset_index(drop=True)
+    merged.to_csv(path, index=False, columns=columns)

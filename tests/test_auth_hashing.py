@@ -11,13 +11,13 @@ def test_hash_and_verify_roundtrip():
 
 
 def test_verify_password_argon2_path(fresh_auth):
-    fresh_auth.upsert_user("bob", "P@ssword12!", "k", "s", "o", "1-1", "", "", "")
+    fresh_auth.upsert_user("bob", "P@ssword12!", "k", "s", "1-1", "", "", "")
     assert fresh_auth.verify_password("bob", "P@ssword12!")["username"] == "bob"
     assert fresh_auth.verify_password("bob", "nope") is None
     assert fresh_auth.verify_password("ghost", "x") is None
 
 def test_verify_password_legacy_then_migrates(fresh_auth):
-    uid = fresh_auth.upsert_user("carol", "Legacy$pw99", "k", "s", "o", "1-1", "", "", "")
+    uid = fresh_auth.upsert_user("carol", "Legacy$pw99", "k", "s", "1-1", "", "", "")
     import sqlite3
     con = sqlite3.connect(fresh_auth._DB_PATH)
     con.execute("UPDATE users SET password_hash='', password_enc=? WHERE id=?",

@@ -11,10 +11,14 @@ from infra.kis_broker import KISBroker
 def _broker():
     b = object.__new__(KISBroker)
     b._RATE_LIMIT_BACKOFF_SEC = 0.0  # 테스트 빠르게
+    b._rate_base = 0.06; b._min_interval = 0.06  # 적응 페이싱(2026-06-17) 상태
 
     async def fake_token(force=False):
         return "tok"
+    async def fake_pace():
+        return None
     b.token = fake_token
+    b._pace = fake_pace
     return b
 
 

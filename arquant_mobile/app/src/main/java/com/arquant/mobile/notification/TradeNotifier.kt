@@ -102,7 +102,7 @@ object TradeNotifier {
             .setPriority(importance)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .setSubText("ArQuant")
+            .setSubText("QuantInSight")
             .build()
 
         nm.notify(notifId and 0x7FFFFFFF, notif)

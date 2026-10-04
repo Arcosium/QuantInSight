@@ -7,10 +7,10 @@ from infra import user_paths
 
 _CREDS = {
     1: {"id": 1, "username": "hh09080", "is_admin": True, "kis_app_key": "K1",
-        "kis_app_secret": "S1", "kis_account_no": "111-01", "deepseek_api_key": "DS1",
+        "kis_app_secret": "S1", "kis_account_no": "111-01",
         "kis_base_url": "https://openapi.koreainvestment.com:9443", "dart_key": "", "label": "a"},
     2: {"id": 2, "username": "hh0908", "is_admin": False, "kis_app_key": "K2",
-        "kis_app_secret": "S2", "kis_account_no": "222-01", "deepseek_api_key": "DS2",
+        "kis_app_secret": "S2", "kis_account_no": "222-01",
         "kis_base_url": "https://openapivts.koreainvestment.com:29443", "dart_key": "", "label": "b"},
 }
 

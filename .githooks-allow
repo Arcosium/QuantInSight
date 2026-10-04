@@ -1,5 +1,0 @@
-# secret-scan.sh 레포 예외 — 운영 코드(infra/ server/ config.py .env 등)는 예외 없음.
-# 아래 두 줄은 '테스트 픽스처의 가짜 비밀번호'와 '스펙/플랜 문서의 예시 비밀번호'
-# 라인만 화이트리스트한다. 형식: path:line:content 전체에 매칭되는 ERE.
-^tests/test_(auth|recovery|register|rate_limit|profile_endpoints)[A-Za-z_]*\.py:[0-9]+:.*([Pp]assword|new_password)
-^docs/superpowers/(specs|plans)/.*\.md:[0-9]+:.*([Pp]assword|new_password)

@@ -169,6 +169,14 @@ class DashViewModel @Inject constructor(
         viewModelScope.launch { refreshStatus() }
     }
 
+    // 사장 지시 2026-06-11: 메시지가 이미 이모지로 시작하면 타입 아이콘을 안 붙임(이중 아이콘 방지).
+    // 백엔드가 "⚠️ ...","✅ ...","⛔ ..." 처럼 이모지를 넣어 보내는데 여기서 또 prepend 하던 구조 → 한 줄에 2개.
+    private fun ic(icon: String, m: String): String {
+        val t = m.trimStart()
+        val emojiLed = t.isNotEmpty() && Character.getType(t.codePointAt(0)) == Character.OTHER_SYMBOL.toInt()
+        return if (emojiLed) m else "$icon $m"
+    }
+
     private fun eventToLog(ev: EventItem): LogEntry? {
         // 사장 피드백 2026-05-16: WS/replay 로 들어오는 메시지(특히 agent_msg)가
         // cleanLog 를 안 거쳐 **굵게**·## 헤더가 그대로 노출되던 버그 — 여기서 일괄 정리.
@@ -176,15 +184,15 @@ class DashViewModel @Inject constructor(
         val m = cleanLog(ev.message)
         return when (ev.type) {
             "status" -> LogEntry("system", "[${ev.state}] $m")
-            "news" -> LogEntry("system", "📰 $m")
-            "trigger" -> LogEntry("system", "🔔 $m")
+            "news" -> LogEntry("system", ic("📰", m))
+            "trigger" -> LogEntry("system", ic("🔔", m))
             "agent_msg" -> LogEntry("agent", m, ev.agent, agentColors[ev.agent])
             "cycle_complete" -> LogEntry("system", "🏁 사이클 완료${if (ev.tradesTotal != null) " · 누적 실매매 ${ev.tradesTotal}건" else ""}")
-            "execution_ready" -> LogEntry("system", "✅ $m")
-            "execution_skipped" -> LogEntry("system", "❌ $m")
-            "trade_executed" -> LogEntry("system", "💸 $m${if (ev.tradesTotal != null) " (누적 ${ev.tradesTotal}건)" else ""}")
-            "trade_failed" -> LogEntry("system", "⚠️ $m")
-            "error" -> LogEntry("system", "❌ $m")
+            "execution_ready" -> LogEntry("system", ic("✅", m))
+            "execution_skipped" -> LogEntry("system", ic("❌", m))
+            "trade_executed" -> LogEntry("system", ic("💸", m) + (if (ev.tradesTotal != null) " (누적 ${ev.tradesTotal}건)" else ""))
+            "trade_failed" -> LogEntry("system", ic("⚠️", m))
+            "error" -> LogEntry("system", ic("❌", m))
             else -> null
         }
     }

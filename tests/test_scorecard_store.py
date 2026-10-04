@@ -35,3 +35,20 @@ def test_missing_optional_columns_ok(tmp_path, monkeypatch):
     assert rid is not None
     r = ss.list_signals(uid=1)[0]
     assert r["news_sentiment"] is None and r["quant_score"] is None
+
+
+def test_fundamental_columns_roundtrip(tmp_path, monkeypatch):
+    ss = _fresh_store(tmp_path, monkeypatch)
+    ss.record_signal({
+        "uid": 1, "cycle_started_at": "t", "ts": "t", "code": "005930",
+        "fundamental_verdict": "QUALITY_VETO",
+        "business_quality_score": 2.5,
+        "moat_score": 4.0,
+        "management_score": 3.0,
+        "valuation_margin_score": 5.0,
+        "thesis_invalidators": ["high:횡령"],
+    })
+    r = ss.list_signals(uid=1)[0]
+    assert r["fundamental_verdict"] == "QUALITY_VETO"
+    assert r["business_quality_score"] == 2.5
+    assert r["thesis_invalidators"] == ["high:횡령"]

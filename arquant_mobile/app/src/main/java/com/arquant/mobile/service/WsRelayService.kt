@@ -48,7 +48,7 @@ class WsRelayService : Service() {
         )
         val notif = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("ArQuant")
+            .setContentTitle("QuantInSight")
             .setContentText("실시간 모니터링 중")
             .setOngoing(true)
             .setContentIntent(pi)
@@ -85,7 +85,7 @@ class WsRelayService : Service() {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             if (nm.getNotificationChannel(CHANNEL_ID) == null) {
                 nm.createNotificationChannel(
-                    NotificationChannel(CHANNEL_ID, "ArQuant 실시간", NotificationManager.IMPORTANCE_LOW).apply {
+                    NotificationChannel(CHANNEL_ID, "QuantInSight 실시간", NotificationManager.IMPORTANCE_LOW).apply {
                         description = "WebSocket 실시간 연결 유지"
                     }
                 )

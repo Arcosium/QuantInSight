@@ -49,9 +49,9 @@ logger = logging.getLogger("OPS")
 # 코드 자가수정 안전 가드(apply_changes/FORBIDDEN_*/ALLOWED_EDITS 등)는 사장 지시 2026-05-20
 # 으로 폐지되어 infra/ops_guards.py 에 회귀 테스트용으로만 격리 보존됨 (실행 경로 미호출).
 
-# ─── LLM client (official DeepSeek API, no BaseAgent dependency) ───
-from config import DEEPSEEK_API_KEY, MODEL_ASSIGNMENTS, AGENT_MAX_TOKENS
-from infra.deepseek_client import chat_completion, response_text
+# ─── LLM client (local OpenAI-compatible server, no BaseAgent dependency) ──
+from config import MODEL_ASSIGNMENTS, AGENT_MAX_TOKENS
+from infra.local_llm_client import chat_completion, response_text
 
 # ─── Tunable limits (매직넘버 상수화) ─────────────────────────────────────
 LLM_TIMEOUT_SEC = 300
@@ -65,7 +65,7 @@ MAX_RATIONALE_CHARS = 2000         # 대시보드 메시지에 표시할 rationa
 TRACEBACK_TAIL_LINES = 8           # error traceback 표시 줄 수
 MAX_PROPOSED_SHOWN = 5             # 개선 제안 표시 개수
 
-OPS_MODEL = MODEL_ASSIGNMENTS.get("ops_support", "deepseek-v4-pro")
+OPS_MODEL = MODEL_ASSIGNMENTS.get("ops_support", "Qwen3.6-35B-A3B-Uncensored-Claude-Genesis-Q8_0.gguf+thinking")
 OPS_MAX_TOKENS = AGENT_MAX_TOKENS.get("ops_support", 4096)
 
 # 사장 지시 2026-05-20: 산하 팀장(investment/operations/finance) 및 코드 자가수정 기능 제거.
@@ -205,17 +205,17 @@ async def llm_propose(prompt: str, role: str = "ops_support",
                       param_tuning: bool = False,
                       api_key: Optional[str] = None) -> Dict[str, Any]:
     """Send `prompt` to the ops_support model. Returns parsed change-plan dict, or {} on failure."""
-    selected_key = (api_key or DEEPSEEK_API_KEY or "").strip()
-    if not selected_key:
-        logger.error("DEEPSEEK_API_KEY 없음 — LLM 호출 불가")
-        return {}
+    # ADMIN 오버라이드 반영. 로컬 LLM 서버는 API 키를 사용하지 않는다.
+    from infra.admin_config import resolve_model
+    model = resolve_model("ops_support", OPS_MODEL)
+    selected_key = ""
     messages = [
             {"role": "system", "content": _build_system_prompt(role, param_tuning=param_tuning)},
             {"role": "user", "content": prompt},
         ]
     try:
         d = await chat_completion(
-            api_key=selected_key, model=OPS_MODEL, messages=messages,
+            api_key=selected_key, model=model, messages=messages,
             max_tokens=OPS_MAX_TOKENS, temperature=LLM_TEMPERATURE,
             timeout_sec=LLM_TIMEOUT_SEC, thinking=True,
             response_format={"type": "json_object"},
@@ -274,7 +274,202 @@ def fetch_cycle_context(cycle_id: Optional[int], uid: Optional[int] = None) -> D
             recent_events = recent_events[-RECENT_EVENT_KEEP:]
     except Exception as e:
         logger.warning(f"events 로드 실패(uid={uid}): {e}")
-    return {"target_cycle": target, "recent_cycles": cycles, "recent_errors_skips": recent_events}
+    # 멀티사이클 결정론 집계(버그 B) + 원장 권위 수익성 스코어카드(F3) 주입.
+    recent_outcomes = summarize_recent_outcomes(cycles)
+    realized = None
+    try:
+        from infra import trade_ledger
+        from tools.market_data import get_usdkrw
+        try:
+            _fx = float(get_usdkrw(0) or 0)
+        except Exception:
+            _fx = 0.0
+        realized = trade_ledger.realized_stats(uid, fx=_fx)
+    except Exception as e:
+        logger.warning(f"realized_stats 로드 실패(uid={uid}): {e}")
+    return {"target_cycle": target, "recent_cycles": cycles,
+            "recent_errors_skips": recent_events,
+            "recent_outcomes": recent_outcomes, "realized": realized,
+            "tuning_trail": tuning_trail(uid)}   # P4 — 중복·왕복 제안 억제
+
+
+def detect_recurring_order_failure(cycles, *, min_cycles: int = 3) -> Optional[str]:
+    """최근 사이클들에서 동일 사유로 반복되는 매수 실패를 결정론적으로 감지 (사장 지시 2026-06-17).
+
+    ops 는 파라미터 튜닝만 가능하다. 같은 실패(예: US 매수 '주문가능금액 초과')가 min_cycles
+    이상의 서로 다른 사이클에서 반복되면, 예산/버퍼 튜닝으로 안 풀린다는 증거이므로 코드/계좌
+    문제로 보고 proposed_source_changes 로 승격해 사장에게 알린다(버그 2026-06-17: 6사이클
+    반복인데 LLM 이 changes 를 안 내 에스컬레이션 0건). 감지 시 문구 반환, 없으면 None."""
+    sig_cycles: Dict[str, set] = {}
+    for c in (cycles or []):
+        if not isinstance(c, dict):
+            continue
+        oe = c.get("orders_executed")
+        if isinstance(oe, str):
+            try:
+                oe = json.loads(oe)
+            except Exception:
+                continue
+        if not isinstance(oe, list):
+            continue
+        cid = c.get("id") or c.get("cycle_id") or id(c)
+        for o in oe:
+            if not isinstance(o, dict) or o.get("side") != "buy":
+                continue
+            if o.get("accepted") or o.get("filled"):
+                continue
+            txt = f"{o.get('result') or ''} {o.get('fill_note') or ''}"
+            if "주문가능금액" not in txt and "초과" not in txt:
+                continue
+            mkt = o.get("market") or ("KR" if str(o.get("ticker", "")).strip().isdigit() else "US")
+            sig_cycles.setdefault(f"{mkt} 매수 주문가능금액 초과", set()).add(cid)
+    for sig, cids in sig_cycles.items():
+        if len(cids) >= min_cycles:
+            return (f"main_swarm.py / infra/kis_broker.py [점검] '{sig}'가 최근 {len(cids)}개 "
+                    f"사이클에서 반복 — 파라미터(예산/버퍼) 튜닝으로 해소 불가. 코드·계좌 점검 필요"
+                    f"(US 매수가능액 통화 혼동 / 클램프 거래소 / USD 예수금 부족 등).")
+    return None
+
+
+def _as_list_any(v):
+    """list/JSON문자열 → list. 그 외 [] (방어)."""
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str):
+        try:
+            d = json.loads(v)
+            return d if isinstance(d, list) else []
+        except Exception:
+            return []
+    return []
+
+
+def summarize_recent_outcomes(cycles) -> Dict[str, int]:
+    """최근 사이클을 '체결/반려/주문 미생성'으로 결정론 집계 (버그 B, 2026-06-18).
+
+    OPS#460 가 '장중 다수 리스크 미승인'을 날조했으나, 실제 반려는 1건뿐이고 나머지는 주문 자체가
+    생성 안 된(오케스트레이터 '없음' 선택) 사이클이었다. '주문 미생성'을 '리스크 반려'로 혼동하지
+    않도록 정확한 수치를 프롬프트에 주입한다. 반려=실행결과에 미접수/미체결로 남은 주문."""
+    executed = rejected = no_order = 0
+    for c in (cycles or []):
+        if not isinstance(c, dict):
+            continue
+        oe = _as_list_any(c.get("orders_executed"))
+        planned = _as_list_any(c.get("orders_planned"))
+        for o in oe:
+            if not isinstance(o, dict):
+                continue
+            if o.get("accepted") or o.get("filled"):
+                executed += 1
+            else:
+                rejected += 1
+        if not planned and not oe:
+            no_order += 1
+    return {"cycles": len(cycles or []), "executed_orders": executed,
+            "rejected_orders": rejected, "no_order_cycles": no_order}
+
+
+def _load_param_log(uid) -> Dict[str, Any]:
+    """직전 파라미터 조정 로그(키→{from,to,ts}) 로드 — anti-oscillation 용(버그 B)."""
+    from infra import user_paths
+    try:
+        p = user_paths.ops_param_log_path(uid)
+        if p.exists():
+            d = json.loads(p.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_param_log(uid, log: Dict[str, Any]) -> None:
+    from infra import user_paths
+    try:
+        user_paths.ops_param_log_path(uid).write_text(
+            json.dumps(log or {}, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def tuning_trail(uid, limit: int = 40) -> Dict[str, List]:
+    """최근 '적용된' 파라미터 조정을 키별 시계열로 압축 (P4, 2026-08-02).
+
+    왜: filter_oscillating_overrides 는 **적용 단계**에서 되감기를 막지만, LLM 은 자기가 지난주
+    무엇을 어디로 옮겼는지 모른 채 매 사이클 같은 제안을 다시 만든다(무한 재제안 → 토큰 낭비 +
+    드롭 로그 오염). 이력을 프롬프트에 보여 **애초에 제안하지 않게** 한다.
+
+    per-uid (profile_overrides 이력 = 계정별). 반환 {key: [(ts, value), ...]} 시간 오름차순."""
+    from infra import profile_overrides
+    trail: Dict[str, List] = {}
+    for rec in (profile_overrides.load_proposals(uid) or [])[-limit:]:
+        ts = str(rec.get("ts") or "")[5:16]          # 'MM-DD HH:MM'
+        for k, v in (rec.get("overrides_applied") or {}).items():
+            trail.setdefault(str(k), []).append((ts, v))
+    return trail
+
+
+def _tuning_trail_block(trail: Dict[str, List], max_keys: int = 12) -> str:
+    """tuning_trail → 프롬프트 블록. 값이 과거 값으로 되돌아온 키는 '왕복'으로 표시한다."""
+    if not trail:
+        return ""
+    lines = []
+    for k, hist in sorted(trail.items(), key=lambda kv: -len(kv[1]))[:max_keys]:
+        recent = hist[-5:]
+        vals = [v for _, v in hist]
+        # 되돌아옴 = 마지막 값이 '직전 값을 제외한' 과거에 이미 있었다 → 왕복 신호
+        flip = " ⚠️왕복(과거 값으로 되돌아옴)" if len(vals) >= 3 and vals[-1] in vals[:-2] else ""
+        trace = " → ".join(f"{v}({t})" for t, v in recent)
+        lines.append(f"- {k}: {trace}  [누적 {len(hist)}회 변경]{flip}")
+    return ("\n[최근 파라미터 조정 이력 — 이 계정에 **이미 적용된** 변경들]\n"
+            + "\n".join(lines)
+            + "\n  ⚠️ 위 키를 '되감는' 방향(직전 조정의 반대)으로 다시 제안하지 말 것 — 시스템이 진동으로 "
+              "판단해 자동 드롭한다. 누적 변경 횟수가 많은데도 성과가 개선되지 않았다면, 그 키는 "
+              "**원인이 아니다** — 같은 키를 계속 흔들지 말고 다른 원인을 찾거나 '변경 없음'으로 답하라.")
+
+
+def _osc_num(v):
+    """수치형(불리언 제외)만 float 반환, 아니면 None."""
+    if isinstance(v, bool):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _osc_parse_ts(s):
+    try:
+        return datetime.strptime(str(s)[:19], "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None
+
+
+def filter_oscillating_overrides(proposed: Dict[str, Any], last_changes: Dict[str, Any],
+                                 *, now_ts: str, window_sec: int = 7200):
+    """직전 적용 변경을 window 내 '반대 방향'으로 되감는 진동을 차단(버그 B, 2026-06-18).
+
+    last_changes: {key: {"from": x, "to": y, "ts": "YYYY-MM-DD HH:MM:SS"}} — 키별 직전 적용 변경.
+    직전 변경 방향(to−from)과 신규 변경 방향(new−to)이 반대면(둘 다 0 아님) 진동으로 보고 보류한다.
+    같은 방향(추세 강화)·수치 아님(불리언 등)·window 경과(레짐 변화 가능)는 통과. 반환 (kept, dropped{key:reason})."""
+    kept, dropped = {}, {}
+    nt = _osc_parse_ts(now_ts)
+    for k, v_new in (proposed or {}).items():
+        lc = (last_changes or {}).get(k)
+        nv, lf, lt = _osc_num(v_new), _osc_num((lc or {}).get("from")), _osc_num((lc or {}).get("to"))
+        if lc and nv is not None and lf is not None and lt is not None:
+            within = True
+            lts = _osc_parse_ts(lc.get("ts"))
+            if nt and lts:
+                within = (nt - lts).total_seconds() <= max(0, int(window_sec))
+            if within:
+                prev_delta, new_delta = lt - lf, nv - lt
+                if prev_delta != 0 and new_delta != 0 and (prev_delta > 0) != (new_delta > 0):
+                    _h = max(1, int(window_sec) // 3600)
+                    dropped[k] = (f"직전 조정 {lc.get('from')}→{lc.get('to')} 을 {_h}h 내 되감는 진동"
+                                  f"({lc.get('to')}→{v_new}) — 보류(목표지향 같은방향 조정만 허용)")
+                    continue
+        kept[k] = v_new
+    return kept, dropped
 
 
 def _summarize_exec_results(orders_executed) -> str:
@@ -305,7 +500,11 @@ def _summarize_exec_results(orders_executed) -> str:
         elif e.get("accepted"):
             st = "접수—체결폴링중(실패아님)"
         else:
-            st = "미접수·반려"
+            # 사장 지시 2026-06-16: 미접수·반려는 원인(fill_note/result)을 함께 표시 — OPS 가
+            # '왜 안 됐는지'(주문가능금액 부족·NXT 거래불가·marketability·DART 반려 등)를 정확히
+            # 보고 환각(예: '유동성 부족') 대신 올바르게 분류·판단하게 한다.
+            _why = str(e.get("fill_note") or e.get("result") or "").strip()
+            st = "미접수·반려" + (f"({_why[:40]})" if _why else "")
         out.append(f"{tk} {side} x{qty}: {st}")
     return " | ".join(out) if out else "없음"
 
@@ -329,6 +528,62 @@ def _task_block_for_trigger(trigger: str) -> str:
             "파라미터로 못 고치는 문제는 rationale 에 '진단'으로만 적으십시오.")
 
 
+def _asset_identity_lines(codes) -> str:
+    """코드→정본 이름·자산군 식별 블록. 버그 2026-06-12: ops 가 코드만 받고 자산타입을 몰라
+    132030(KODEX 골드선물=금)을 261220(원유)과 '같은 원유 ETF'로 뭉뚱그려 전역 STOP_LOSS 를
+    오변경(hh09080). 슬리브 풀에서 코드↔이름·자산군을 정형 주입한다."""
+    try:
+        from infra.asset_sleeves import SLEEVES
+    except Exception:
+        return ""
+    cmap = {}
+    for spec in SLEEVES:
+        for entry in (tuple(spec.pool_kr) + tuple(spec.pool_us)):
+            c = str(entry[0]).strip().upper()
+            nm = entry[1] if len(entry) > 1 else c
+            cmap[c] = (nm, spec.macro_keyword)
+    seen, lines = set(), []
+    for code in (codes or []):
+        cc = str(code).strip().upper()
+        if not cc or cc in seen:
+            continue
+        seen.add(cc)
+        if cc in cmap:
+            nm, kw = cmap[cc]
+            lines.append(f"- {cc} = {nm} (자산군: {kw})")
+    return "\n".join(lines)
+
+
+def _execution_outcome_note(tgt) -> str:
+    """직전 사이클 '주문 미실행/미승인'의 실제 사유를 정형화. 버그 2026-06-12: ops 가
+    risk_approved=False(반려 vs 주문없음 미구분)와 market_open=False 만 보고 '비개장이라
+    주문 없음'을 날조(hh09080 KT&G ESG 반려 무시). 실제 사유 인용을 강제한다."""
+    planned = tgt.get("orders_planned")
+    if isinstance(planned, str):
+        try:
+            planned = json.loads(planned)
+        except Exception:
+            planned = None
+    if not planned:
+        return ("신규 주문이 없음 — 후보 선정·매도판단·사이징 단계에서 주문이 만들어지지 않은 것이다 "
+                "(시장 비개장과 무관). 후보/사이징 사유를 보라.")
+    if not tgt.get("risk_approved"):
+        return ("주문은 만들어졌으나 리스크 검증 미승인 — 아래 [risk_report]의 실제 반려 사유"
+                "(예: ESG 블랙리스트·편중·예수금·수량)를 인용하라. '비개장'으로 단정 금지.")
+    return ""
+
+
+# 버그 2026-06-12: ops 가 정형 사실(자산타입·실제사유·비중) 없이 빈약한 신호(market_open=False,
+# 코드 동시등장, risk_approved bool)에 과적합해 인과를 날조하던 환각 5건(hh09080·hh0908) 차단.
+ANTI_CONFAB_GUARD = (
+    "\n[⚠️ 반(反)환각 원칙 — 반드시 준수]\n"
+    "- 주문 미실행/미승인·보유·비중·손익의 사유를 추측하지 말 것. 위 [실행 결과]·[risk_report]·잔고 등 "
+    "**실제 사유와 수치만** 인용하라.\n"
+    "- market_open=False 는 '비개장'이 아니다(정규장 중에도 시간당 사이클은 False). '비개장이라 주문 없음'으로 단정 금지.\n"
+    "- 자산은 위 [자산 식별]의 정본 이름·자산군을 쓰라(예: 132030=금/골드, 261220=원유 — 서로 다른 자산이다).\n"
+    "- 주식 비중·손익을 임의 추정해 모순된 수치로 파라미터를 바꾸지 말 것. 실현손익(체결)과 평가손익(미실현 포함)은 다른 지표다.")
+
+
 def build_prompt(ctx: Dict[str, Any], manual_directive: Optional[str] = None,
                  delegated: bool = False, trigger: str = "cycle") -> str:
     """Compose the prompt for the LLM. Includes truncated cycle reports so the
@@ -344,7 +599,7 @@ def build_prompt(ctx: Dict[str, Any], manual_directive: Optional[str] = None,
     if tgt:
         parts.append("[직전 사이클 요약]")
         parts.append(f"- 시작 {tgt.get('started_at')} / 종료 {tgt.get('ended_at')}")
-        parts.append(f"- 세션: {tgt.get('session')} / 개장 사이클: {bool(tgt.get('market_open'))}")
+        parts.append(f"- 세션: {tgt.get('session')} / 세션 첫(개장-트리거) 사이클: {bool(tgt.get('market_open'))}")
         parts.append(f"- 후보 종목: {tgt.get('candidate_codes')}")
         parts.append(f"- 최종 매수: {tgt.get('target_codes')}")
         parts.append(f"- 사후관리실장 매도결정: {tgt.get('sell_directives')}")
@@ -353,7 +608,38 @@ def build_prompt(ctx: Dict[str, Any], manual_directive: Optional[str] = None,
         parts.append("  ⚠️ 주문은 비동기 체결이다 — '접수—체결폴링중(실패아님)'은 5분 폴링 진행중이지 실패가 아니다. "
                      "미체결을 '실패'로 단정해 MAX_TRADES_PER_CYCLE·ENABLE_CHEAP_FALLBACK 등 파라미터를 바꾸지 말 것.")
         parts.append(f"- 리스크 승인: {bool(tgt.get('risk_approved'))}")
+        _outcome = _execution_outcome_note(tgt)
+        if _outcome:
+            parts.append(f"- 미실행/미승인 실제 사유: {_outcome}")
         parts.append(f"- 잔고: cash {tgt.get('bp_cash')} / total {tgt.get('bp_total_eval')} / pnl {tgt.get('bp_pnl_ratio')}")
+        # 자산 식별(코드→정본 이름·자산군) — '같은 원유 ETF' 류 자산타입 환각 차단.
+        # 슬리브 ETF(132030 금·261220 원유)는 candidate 가 아니라 주문/매도지시에 등장하므로
+        # 후보·매수뿐 아니라 계획/실행 주문 ticker·매도지시 코드까지 모두 식별 대상에 넣는다.
+        def _as_list(v):
+            if isinstance(v, str):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    return []
+            return list(v or [])
+        _all_codes = []
+        for _k in ("candidate_codes", "target_codes"):
+            _all_codes += _as_list(tgt.get(_k))
+        for _k in ("orders_planned", "orders_executed"):
+            for _o in _as_list(tgt.get(_k)):
+                if isinstance(_o, dict) and _o.get("ticker"):
+                    _all_codes.append(_o.get("ticker"))
+        _sd = tgt.get("sell_directives")
+        if isinstance(_sd, str):
+            try:
+                _sd = json.loads(_sd)
+            except Exception:
+                _sd = None
+        if isinstance(_sd, dict):
+            _all_codes += list(_sd.keys())
+        _ident = _asset_identity_lines(_all_codes)
+        if _ident:
+            parts.append(f"\n[자산 식별 — 코드별 정본 이름·자산군]\n{_ident}")
         for fld in ("macro_report", "quant_report", "news_report", "final_report", "risk_report", "error"):
             v = tgt.get(fld)
             if v:
@@ -379,7 +665,40 @@ def build_prompt(ctx: Dict[str, Any], manual_directive: Optional[str] = None,
             else:
                 parts.append(f"- {e.get('ts')} {e.get('type')}: {str(e.get('message',''))[:MAX_SKIP_MSG_CHARS]}")
 
+    # 멀티사이클 결정론 집계(버그 B) — '주문 미생성'을 '리스크 반려'로 혼동한 OPS#460 환각 차단.
+    _ro = ctx.get("recent_outcomes")
+    if isinstance(_ro, dict) and _ro.get("cycles"):
+        parts.append(
+            f"\n[최근 {_ro.get('cycles')}사이클 집행 집계 — 결정론 사실, 이 수치만 인용]\n"
+            f"- 주문 체결 {_ro.get('executed_orders', 0)}건 · 리스크/거래소 반려 {_ro.get('rejected_orders', 0)}건 · "
+            f"주문 미생성 {_ro.get('no_order_cycles', 0)}사이클\n"
+            f"  ⚠️ '주문 미생성'(오케스트레이터가 최종종목 없음 선택)을 '리스크 반려'로 혼동 금지 — "
+            f"반려 {_ro.get('rejected_orders', 0)}건이 실제 반려된 전부다. 없는 '반려 폭풍'을 지어내 "
+            f"'파라미터로 통제 불가'라 결론짓지 말 것.")
+
+    # 수익성 스코어카드(F3) — 원장 권위 실현 기대값. 고회전 수익성을 보고 진입엣지·청산을 조절한다.
+    _rs = ctx.get("realized")
+    if isinstance(_rs, dict) and _rs.get("sell_count"):
+        _kr = _rs.get("kr", {}); _us = _rs.get("us", {})
+        parts.append(
+            f"\n[수익성 스코어카드 — 원장 권위 실현손익(trade_log 이중계상 비의존)]\n"
+            f"- 매도 {_rs.get('sell_count')}건 · 승률 {_rs.get('win_rate', 0):.1f}% "
+            f"(승 {_rs.get('win_count', 0)}/패 {_rs.get('loss_count', 0)})\n"
+            f"- 총 실현손익 {_rs.get('total_realized_krw', 0):,.0f}원 · 거래당 기대값 {_rs.get('expectancy_krw', 0):,.0f}원\n"
+            f"- 평균이익 {_rs.get('avg_win_krw', 0):,.0f}원 / 평균손실 {_rs.get('avg_loss_krw', 0):,.0f}원 · "
+            f"US 비용드래그 {_rs.get('cost_drag_krw', 0):,.0f}원\n"
+            f"- KR 매도 {_kr.get('sell_count', 0)}건 실현 {_kr.get('realized', 0):,.0f}원 · "
+            f"US 매도 {_us.get('sell_count', 0)}건 실현 {_us.get('realized_usd', 0):,.2f}USD\n"
+            f"  🎯 목표: 현재 회전율에서 '거래당 기대값'을 +로 끌어올려라. 기대값이 −면 비용 대비 엣지가 부족하다 — "
+            f"MIN_NET_EDGE_PCT↑(비용 못 버는 매매 차단)·MIN_QUANT_SCORE↑(진입 엄선)·STOP_LOSS_PCT↓(손실 빨리 차단)·"
+            f"TRAILING_TAKE_PROFIT_PCT(승자 길게)로 조절하라. 비용드래그가 크면 US 진입엣지를 더 높여라.")
+
+    _trail = _tuning_trail_block(ctx.get("tuning_trail") or {})
+    if _trail:
+        parts.append(_trail)
+
     parts.append(_task_block_for_trigger(trigger))
+    parts.append(ANTI_CONFAB_GUARD)
 
     # 사장 지시 2026-05-22: 운용지원실장은 param_overrides 만 조정하므로 소스 본문 첨부 불필요.
     # (편집 가능 코드베이스 스냅샷 첨부를 제거 — 프롬프트 비대화 방지 + LLM을 소스 사고로 유도하지 않음)
@@ -403,7 +722,7 @@ def _gate_overrides_by_data(raw_overrides: Dict[str, Any], has_cycle_data: bool,
 
 def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: str,
                          started: str, trigger: str, cycle_id: Optional[int],
-                         has_cycle_data: bool = True) -> None:
+                         has_cycle_data: bool = True, auto_escalation: Optional[str] = None) -> None:
     """운용지원 단일 경로(사장 지시 2026-05-20): 소스 코드·서버 절대 불가침.
     param_overrides 만 프로필 한정으로 반영하고, changes 는 '제안'으로만 기록한다.
     ADMIN·일반 유저 모두 동일하게 이 경로를 탄다(코드 자가수정 제거).
@@ -416,6 +735,20 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
         plan.get("param_overrides") or {}, has_cycle_data, is_manual=is_manual)
     if _gate_reason:
         rationale = (f"{_gate_reason} " + rationale).strip()
+    # Automatic proposals must not change the baseline they are being judged on.
+    _research_id = None
+    if raw_ov and not is_manual:
+        try:
+            if actor_uid is not None:
+                from infra.strategy_research import record_proposal
+                _research_id = record_proposal(int(actor_uid), raw_ov,
+                    rationale=rationale, trigger=trigger)
+        except Exception as exc:
+            logger.warning("Research snapshot failed: %s", type(exc).__name__)
+        raw_ov = {}  # fail closed even if the journal is unavailable
+        summary = "전략 변경안 검증 대기"
+        rationale = (rationale + " | 기존 전략과 같은 데이터·비용으로 비교하고, "
+                     "시간 순서 검증과 모의매매 성과를 확인하기 전에는 자동 반영하지 않습니다.")
     # 거버넌스 2026-06-05 — 정책/구조 플래그(자산군·엔진) 처리는 트리거별로 다르다:
     #   manual(사장)=즉시 / weekly(토)=사장 승인 대기 회부 / cycle(평일)=차단.
     # ops 가 미국 주식을 꺼 실거래 매수가 막혔던 사고 재발 방지.
@@ -439,6 +772,25 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
         raw_ov, _clamp_notes = clamp_overrides(raw_ov)
         if _clamp_notes:
             rationale = (rationale + " | 클램프: " + "; ".join(_clamp_notes)).strip()
+    # anti-oscillation(버그 B, 2026-06-18) — cycle 자동튜닝에서 직전 조정을 window 내 반대방향으로
+    # 되감는 진동(예산비율 0.3→1.0→0.3 류)을 보류한다. manual(사장 직접 지시)·weekly 는 면제.
+    _prior_vals: Dict[str, Any] = {}
+    if raw_ov and trigger == "cycle" and actor_uid is not None:
+        try:
+            from config import OPS_OSCILLATION_WINDOW_SEC as _OSC_WIN
+        except Exception:
+            _OSC_WIN = 7200
+        raw_ov, _osc_dropped = filter_oscillating_overrides(
+            raw_ov, _load_param_log(actor_uid), now_ts=started, window_sec=_OSC_WIN)
+        if _osc_dropped:
+            rationale = (rationale + " | 진동방지: " + "; ".join(_osc_dropped.values())).strip()
+        if raw_ov:
+            try:
+                import runtime as _rt
+                for _k in raw_ov:
+                    _prior_vals[_k] = _rt.get(_k, uid=int(actor_uid))
+            except Exception:
+                pass
     # weekly 정책 키는 승인 대기함에 적재 + 사장에게 알림(자동 적용 금지).
     if _to_review and actor_uid is not None:
         try:
@@ -447,15 +799,20 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
             _review_lines = []
             for _k, _v in _to_review.items():
                 _cur = runtime.get(_k, uid=int(actor_uid))
+                # 사장 지시 2026-07-21: proposed == current(예: true→true)는 실제 변경이 없으므로
+                # 승인 대기함에 넣지 않는다(혼란스러운 no-op 승인 요청 방지).
+                if _v == _cur:
+                    continue
                 policy_approval_inbox.enqueue(int(actor_uid), _k, _v, _cur, rationale)
                 _review_lines.append(f"  • {_k}: {_cur} → {_v}")
-            import main_swarm
-            main_swarm.log_response_event({
-                "source": "system_event", "type": "agent_msg",
-                "agent": display,
-                "message": ("🔐 [정책 변경 승인 요청] 토요일 점검에서 아래 정책 플래그 변경을 제안합니다 — "
-                            "대시보드 '정책 변경 승인 대기'에서 승인해야 적용됩니다:\n" + "\n".join(_review_lines)),
-            }, uid=int(actor_uid))
+            if _review_lines:   # 실제 변경 제안이 있을 때만 승인 요청 알림
+                import main_swarm
+                main_swarm.log_response_event({
+                    "source": "system_event", "type": "agent_msg",
+                    "agent": display,
+                    "message": ("🔐 [정책 변경 승인 요청] 토요일 점검에서 아래 정책 플래그 변경을 제안합니다 — "
+                                "대시보드 '정책 변경 승인 대기'에서 승인해야 적용됩니다:\n" + "\n".join(_review_lines)),
+                }, uid=int(actor_uid))
         except Exception as e:
             logger.warning(f"정책 승인 회부 실패: {e}")
     # 사장 지시 2026-06-09 #7 — cycle 에서 회부된 weekly-tier 제안을 토요일 검증 큐에 적재 + 고지.
@@ -475,12 +832,16 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
         except Exception as e:
             logger.warning(f"주간 검증 큐 회부 실패: {e}")
     # 소스 변경 제안은 사람이 읽을 설명으로만 보존 (적용 안 함)
-    proposed = []
+    proposed = ([f"전략 연구 {_research_id}: 검증 대기"] if _research_id else [])
     for ch in (plan.get("changes") or []):
         f = (ch.get("file") or "?")
         a = (ch.get("action") or "modify")
         d = ch.get("description") or ch.get("summary") or ""
         proposed.append(f"{f} [{a}] {d}".strip())
+    # 결정론적 자동 에스컬레이션(사장 지시 2026-06-17): 같은 실패가 여러 사이클 반복돼 파라미터로
+    # 안 풀리는 경우 — LLM 의 changes 와 무관하게 proposed 로 승격(코드 점검 필요를 사장에게 보고).
+    if auto_escalation:
+        proposed.insert(0, auto_escalation)
 
     applied_ov: Dict[str, Any] = {}
     if actor_uid is not None and isinstance(raw_ov, dict) and raw_ov:
@@ -489,9 +850,18 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
             applied_ov = profile_overrides.set_overrides(int(actor_uid), raw_ov)
         except Exception as e:
             logger.warning(f"profile_overrides.set_overrides 실패: {e}")
+    # anti-oscillation(버그 B): 적용된 변경의 from→to·ts 를 기록 → 다음 사이클 되감기 진동 판정에 사용.
+    if applied_ov and trigger == "cycle" and actor_uid is not None:
+        try:
+            _plog = _load_param_log(actor_uid)
+            for _k, _v in applied_ov.items():
+                _plog[_k] = {"from": _prior_vals.get(_k), "to": _v, "ts": started}
+            _save_param_log(actor_uid, _plog)
+        except Exception as e:
+            logger.warning(f"ops_param_log 기록 실패: {e}")
 
     if applied_ov:
-        head = f"✅ 전략 파라미터 튜닝 {len(applied_ov)}건 반영 (다음 로그인 시 활성화)"
+        head = f"✅ 전략 파라미터 튜닝 {len(applied_ov)}건 반영"
     elif proposed:
         head = f"📝 개선 제안 {len(proposed)}건 — 참고용 (자동 적용 안 함)"
     elif "변경 없음" in summary or "변경 사항 없음" in summary:
@@ -500,6 +870,9 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
         head = summary
 
     msg_lines = [f"🛠 [OPS#{cycle_id or 'manual'}] {display}: {head}"]
+    if auto_escalation:
+        msg_lines.append(f"🔴 [코드 점검 필요 — 자동 에스컬레이션] {auto_escalation} "
+                         f"(파라미터 튜닝으로 해결 불가 — 사장 점검 요망)")
     if rationale and not ("변경 없음" in summary and not applied_ov and not proposed):
         msg_lines.append(f"근거: {_clean_trim(rationale, MAX_RATIONALE_CHARS)}")
     for k, v in applied_ov.items():
@@ -533,6 +906,7 @@ def _handle_param_tuning(plan: Dict[str, Any], actor_uid: Optional[int], role: s
                 "role": role, "role_display": display, "trigger": trigger,
                 "cycle_id": cycle_id, "summary": summary, "rationale": rationale,
                 "overrides_applied": applied_ov,
+                "research_id": _research_id,
                 "proposed_source_changes": proposed,
                 "restarted": False,
             })
@@ -589,19 +963,15 @@ async def run(cycle_id: Optional[int], manual: Optional[str], role: str = "ops_s
         logger.info(f"LLM 프롬프트 길이: {len(prompt)} chars (trigger={trigger})")
         # param_tuning=True: LLM 에게 '프로필 한정 param_overrides 만, 소스 변경은 제안으로만 기록,
         # 서버 재시작 없음'을 지시한다. 코드 자가수정·재시작·팀장 위임 경로는 폐지됨(ops_guards 격리).
-        user_api_key = ""
-        if actor_uid is not None:
-            try:
-                from infra.auth_store import get_user_credentials
-                user_api_key = (get_user_credentials(actor_uid) or {}).get("deepseek_api_key", "")
-            except Exception as e:
-                logger.warning("계정별 DeepSeek 키 로드 실패(uid=%s): %s", actor_uid, e)
         plan = await llm_propose(
-            prompt, role="ops_support", param_tuning=True, api_key=user_api_key)
+            prompt, role="ops_support", param_tuning=True)
 
+        # 결정론적 자동 에스컬레이션 — 같은 사유 반복 실패(파라미터로 못 고침)를 코드 점검으로 승격.
+        _escal = detect_recurring_order_failure(
+            ([ctx["target_cycle"]] if ctx.get("target_cycle") else []) + (ctx.get("recent_cycles") or []))
         # 진단 + 프로필 한정 파라미터(param_overrides) 조정 + 소스 변경 '제안' 기록만 수행.
         _handle_param_tuning(plan, actor_uid, "ops_support", started, trigger, cycle_id,
-                             has_cycle_data=has_cycle_data)
+                             has_cycle_data=has_cycle_data, auto_escalation=_escal)
     except Exception as e:
         import traceback
         logger.error(f"ops run 실패: {type(e).__name__}: {e!r}", exc_info=True)

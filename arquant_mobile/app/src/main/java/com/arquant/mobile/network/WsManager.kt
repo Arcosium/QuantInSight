@@ -54,14 +54,13 @@ class WsManager @Inject constructor(
 
     private fun doConnect() {
         if (!running) return
-        // 사장 피드백 2026-05-16: WS는 헤더 주입이 까다로워 세션 토큰을 ?token= 쿼리로 전달.
-        // (서버 ws_ep 가 쿠키 또는 ?token= 으로 세션 검증)
+        // Cloudflare validates the Access cookie before forwarding the signed JWT.
         val base = BuildConfig.ARQUANT_WS_URL
         val token = tokenManager.get()
-        val url = if (token.isBlank()) base
-                  else base + (if (base.contains("?")) "&" else "?") + "token=" +
-                       java.net.URLEncoder.encode(token, "UTF-8")
-        val req = Request.Builder().url(url).build()
+        // 사장 지시 2026-05-21: client=mobile 로 표시 → 서버가 이 연결에 한해 프로필 알림설정으로
+        // 4종 푸시(체결신청·체결완료·사이클완료·장마감)를 게이트한다. (웹 WebView 연결은 전체 수신)
+        var url = base + (if (base.contains("?")) "&" else "?") + "client=mobile"
+        val req = Request.Builder().url(url).header("Cookie", "CF_Authorization=$token").build()
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i(TAG, "WS connected")
@@ -71,8 +70,12 @@ class WsManager @Inject constructor(
                 try {
                     val ev = json.decodeFromString<EventItem>(text)
                     _events.tryEmit(ev)
-                    // 매수/매도/실패/사이클완료 → 푸시 알림
-                    if (ev.type in setOf("trade_executed", "trade_failed", "cycle_complete")) {
+                    // 사장 지시 2026-05-21: 모바일 알림 4종 + 실패.
+                    //   order_submitted(체결 신청) · trade_executed/failed(체결 완료/실패)
+                    //   · cycle_complete(사이클 완료) · market_close(장 마감)
+                    // (서버가 client=mobile 연결엔 프로필 설정으로 켜진 종류만 보내므로 1차 필터는 서버가 수행)
+                    if (ev.type in setOf("order_submitted", "trade_executed", "trade_failed",
+                                         "cycle_complete", "market_close")) {
                         TradeNotifier.maybeNotify(appContext, ev)
                     }
                 } catch (e: Exception) {

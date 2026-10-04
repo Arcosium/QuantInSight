@@ -7,11 +7,11 @@ def test_registry_isolates_two_uids(monkeypatch):
         1: {"id": 1, "username": "hh09080", "is_admin": True,
             "kis_app_key": "K1", "kis_app_secret": "S1", "kis_account_no": "111-01",
             "kis_base_url": "https://openapi.koreainvestment.com:9443",
-            "deepseek_api_key": "DS1", "dart_key": "", "label": "admin"},
+            "dart_key": "", "label": "admin"},
         2: {"id": 2, "username": "hh0908", "is_admin": False,
             "kis_app_key": "K2", "kis_app_secret": "S2", "kis_account_no": "222-01",
             "kis_base_url": "https://openapivts.koreainvestment.com:29443",
-            "deepseek_api_key": "DS2", "dart_key": "", "label": "mock"},
+            "dart_key": "", "label": "mock"},
     }
     monkeypatch.setattr(uc.auth_store, "get_user_credentials",
                         lambda uid: creds_by_uid.get(int(uid)))

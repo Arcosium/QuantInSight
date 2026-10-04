@@ -21,4 +21,10 @@ def compute_stock_weight(total_eval: Optional[float], kr_cash: Optional[float],
     tek = float(total_eval_kr or 0.0) or te   # KR 총평가 없으면 total 로 폴백(해외 미보유 가정, 보수)
     kr_stock = max(0.0, tek - float(kr_cash or 0.0))
     os_stock = max(0.0, float(overseas_stock_krw or 0.0))
-    return max(0.0, min(1.0, (kr_stock + os_stock) / te))
+    stock = kr_stock + os_stock
+    # 사장 지시 2026-06-16: 주식가치는 (총평가 − KR예수금)을 넘을 수 없다 — 현금은 주식이 아니다.
+    # 모의계정 해외평가 환율 오염(_overseas_stock_krw 과대, exrt 비정상)으로 주식비중이 100% 로
+    # 캡되어 매크로 게이트가 매수를 영구 차단하던 버그(uid2: 현금 59% 인데 주식 100% 오판) 방어.
+    # 입력(total_eval_kr/overseas) 신뢰도와 무관하게 물리적 상한을 보장 — 실거래도 안전(현금은 비주식).
+    stock = min(stock, max(0.0, te - float(kr_cash or 0.0)))
+    return max(0.0, min(1.0, stock / te))

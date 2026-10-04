@@ -77,3 +77,19 @@ def test_place_order_routes_exchange(monkeypatch):
     o = [p for p in s.posts if p["url"].endswith("/order-cash")][0]
     assert o["tr_id"] == "TTTC0012U"
     assert o["json"]["EXCG_ID_DVSN_CD"] == "NXT"
+
+
+def test_kr_buy_invalid_limit_is_rounded_up_to_exchange_tick(monkeypatch):
+    s = _Sess(); b = _broker(monkeypatch, s)
+    asyncio.run(b.kr_buy("003540", 1, price=27196))
+    o = [p for p in s.posts if p["url"].endswith("/order-cash")][0]
+    assert o["json"]["ORD_DVSN"] == "00"
+    assert o["json"]["ORD_UNPR"] == "27200"
+
+
+def test_kr_sell_invalid_limit_is_rounded_up_to_exchange_tick(monkeypatch):
+    s = _Sess(); b = _broker(monkeypatch, s)
+    asyncio.run(b.kr_sell("003540", 1, price=27196))
+    o = [p for p in s.posts if p["url"].endswith("/order-cash")][0]
+    assert o["json"]["ORD_DVSN"] == "00"
+    assert o["json"]["ORD_UNPR"] == "27200"

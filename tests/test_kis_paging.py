@@ -181,3 +181,17 @@ def test_overseas_holdings_paginates_each_exchange(tmp_path, monkeypatch):
     res = asyncio.run(b._overseas_holdings())
     codes = sorted(h["code"] for h in res)
     assert codes == ["AAA", "BBB"], "한 거래소의 2페이지 종목이 모두 포함돼야 함(현행은 1페이지만 읽어 BBB 누락)"
+    assert b._overseas_holdings_authoritative is True
+
+
+def test_overseas_holdings_empty_is_not_authoritative_if_one_exchange_fails(tmp_path, monkeypatch):
+    """빈 목록이어도 세 거래소 중 하나가 실패하면 전량매도 확정으로 쓰면 안 된다."""
+    b = KISBroker(_creds(mock=False), token_path=tmp_path / "t.json")
+    fake = _ExchSession({
+        "NASD": [({"rt_cd": "0", "output1": []}, "")],
+        "NYSE": [({"rt_cd": "1", "msg1": "temporary failure"}, "")],
+        "AMEX": [({"rt_cd": "0", "output1": []}, "")],
+    })
+    _wire(b, fake, monkeypatch)
+    assert asyncio.run(b._overseas_holdings()) == []
+    assert b._overseas_holdings_authoritative is False

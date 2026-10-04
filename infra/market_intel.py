@@ -52,6 +52,28 @@ class MarketIntelligenceStore:
             return None
         return self.peek(kind, hour_key, fingerprint)
 
+    def ever_published(self, kind: str) -> bool:
+        """이 kind 가 한 번이라도 게시된 적 있는지 (2026-07-22).
+
+        '느린 생산자'와 '생산자 부재'를 구분하는 신호다 — 소비자는 느린 생산자는 기다려야
+        이득이지만(자체계산은 같은 GPU 를 두고 경합), 부재면 기다릴수록 손해다."""
+        return self._d.get(kind) is not None
+
+    def peek_recent(self, kind: str, fingerprint: Optional[str], *, max_age_sec: float, now: float):
+        """시각(hour_key) 무시하고 max_age_sec 이내 게시분을 반환 (2026-07-22).
+
+        기존 peek 은 hour_key 가 다르면 무조건 버려, :59 에 게시된 매크로를 :00 사이클이
+        재사용하지 못했다. 매크로 캐시 TTL 이 어차피 30분이므로, 그 안의 게시분은
+        '같은 판단'으로 취급해 중복 LLM 호출을 막는다."""
+        e = self._d.get(kind)
+        if not e:
+            return None
+        if fingerprint is not None and e["fingerprint"] != fingerprint:
+            return None
+        if now - float(e.get("produced_at") or 0.0) > max_age_sec:
+            return None
+        return e["result"]
+
 
 _store: Optional[MarketIntelligenceStore] = None
 

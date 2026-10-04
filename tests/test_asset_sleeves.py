@@ -8,7 +8,29 @@ from infra.asset_sleeves import (
     parse_macro_sleeve_pct, current_sleeve_weight, size_sleeve_action,
     cap_sleeve_buy_notional, assemble_sleeve_orders, parse_sleeve_decisions,
     sleeve_pool_for_session, split_sleeve_holdings, build_exec_list,
+    should_execute_sleeve_buy,
 )
+
+
+# ── 비중유지 회전 (사장 지시 2026-06-12, Q4) ────────────────────────────────────
+def test_rotation_buy_allowed_inside_band_when_sell_present():
+    # 데드존(hold/sell)이어도 매도+매수 동시 제안이면 매수 집행(순비중은 매도로 상쇄).
+    assert should_execute_sleeve_buy("hold", True, True) == (True, True)
+    assert should_execute_sleeve_buy("sell", True, True) == (True, True)
+
+
+def test_buy_action_normal_not_rotation():
+    assert should_execute_sleeve_buy("buy", True, False) == (True, False)
+    # 매수 action 인데 매수 directive 가 없으면 집행 안 함.
+    assert should_execute_sleeve_buy("buy", False, True) == (False, False)
+
+
+def test_no_rotation_when_only_buy_or_only_sell_in_band():
+    # 데드존 + 매수 의견만(매도 없음) → 보류(기존 동작).
+    assert should_execute_sleeve_buy("hold", True, False) == (False, False)
+    # 데드존 + 매도만 → 매수 없음.
+    assert should_execute_sleeve_buy("hold", False, True) == (False, False)
+    assert should_execute_sleeve_buy("skip", False, False) == (False, False)
 
 
 # ── 레지스트리 / spec ──────────────────────────────────────────────────────────

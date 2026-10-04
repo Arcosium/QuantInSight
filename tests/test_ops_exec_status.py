@@ -28,6 +28,16 @@ def test_rejected_marked():
     assert "반려" in s or "미접수" in s
 
 
+def test_rejected_shows_reason_from_fill_note():
+    # 사장 지시 2026-06-16: 미접수·반려는 원인(fill_note)을 함께 표시해 OPS 가 '왜 안 됐는지'를
+    # 정확히 보고 환각(예: '유동성 부족') 대신 올바르게 판단하게 한다 — 241710 주문가능금액 부족 사례.
+    s = _summarize_exec_results([
+        {"ticker": "241710", "side": "buy", "qty": 7, "accepted": False, "filled": False,
+         "ok": False, "fill_note": "KIS 주문가능금액 부족"}])
+    assert "241710" in s
+    assert "주문가능금액" in s
+
+
 def test_empty():
     assert _summarize_exec_results([]) == "없음"
     assert _summarize_exec_results(None) == "없음"

@@ -14,7 +14,20 @@ from typing import Any, Dict, Optional
 
 _PATH = Path(__file__).resolve().parent.parent / "data" / "admin_config.json"
 _LOCK = threading.Lock()
-_ALLOWED_MODELS = frozenset({"deepseek-v4-flash", "deepseek-v4-pro"})
+
+# ADMIN 탭은 로컬 모델의 thinking 모드만 고를 수 있다. 외부 모델로 되돌리는 선택지는 없다.
+from config import LOCAL_LLM_MODEL as _LOCAL, LOCAL_LLM_MODEL_THINKING as _LOCAL_T
+
+MODEL_CHOICES = (
+    {"id": _LOCAL_T, "label": "로컬 Qwen3.6 35B · thinking ON (결정용)"},
+    {"id": _LOCAL,   "label": "로컬 Qwen3.6 35B · thinking OFF (분석·도구)"},
+)
+_ALLOWED_MODELS = frozenset(c["id"] for c in MODEL_CHOICES)
+
+
+def model_choices() -> list:
+    """UI 드롭다운용 선택지 목록 [{id, label}]."""
+    return [dict(c) for c in MODEL_CHOICES]
 
 
 def _read() -> Dict[str, Any]:
@@ -29,7 +42,7 @@ def _read() -> Dict[str, Any]:
 
 
 def get_model_override(model_key: str) -> str:
-    """해당 역할의 공식 DeepSeek 모델 오버라이드. 허용되지 않은 과거 값은 무시한다."""
+    """해당 역할의 로컬 모델 오버라이드. 과거 외부 모델 값은 무시한다."""
     value = str((_read().get("model_overrides") or {}).get(model_key) or "").strip()
     return value if value in _ALLOWED_MODELS else ""
 

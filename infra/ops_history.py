@@ -22,7 +22,7 @@ from __future__ import annotations
 import json, logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 logger = logging.getLogger("OPS_HIST")
 KST = timezone(timedelta(hours=9))

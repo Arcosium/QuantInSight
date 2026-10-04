@@ -266,6 +266,3 @@ def validate_order_draft(order_json: Any, balance_info: Any = "",
     return {"approved": bool(approved), "results": results, "report": "\n".join(lines)}
 
 
-# Backwards-compat shim
-async def validate_order_risk(order_json: str, balance_info: str) -> Dict[str, Any]:
-    return validate_order_draft(order_json, balance_info)

@@ -5,6 +5,7 @@
 - 중복 추가는 멱등 처리된다
 """
 import pytest
+from datetime import datetime
 from pathlib import Path
 
 
@@ -108,6 +109,26 @@ def test_multiple_directives_all_present_in_block(isolated_profiles):
     assert "달러 MMF 핵심 축" in block
     assert "금·비트코인 배제" in block
     assert "리밸런싱 트리거 수립" in block
+
+
+def test_day_only_directive_expires_after_created_day(isolated_profiles, monkeypatch):
+    """'오늘' 지시를 상시로 잘못 저장해도 다음 날부터 프롬프트에는 주입하지 않는다."""
+    sd = isolated_profiles
+    uid = 21
+    monkeypatch.setattr(sd, "_now_kst", lambda: "2026-07-22 09:52:43")
+    sd.append_directive(uid, "오늘 신규 매수는 최소화하고 차익을 단계적으로 실현하라")
+    monkeypatch.setattr(sd, "_now_dt_kst", lambda: datetime(2026, 7, 23, 9, 0, tzinfo=sd.KST))
+    assert sd.load(uid), "감사 기록은 삭제하면 안 됨"
+    assert sd.build_orchestrator_directive_block(uid) == ""
+
+
+def test_today_onward_directive_does_not_expire(isolated_profiles, monkeypatch):
+    sd = isolated_profiles
+    uid = 22
+    monkeypatch.setattr(sd, "_now_kst", lambda: "2026-07-22 09:52:43")
+    sd.append_directive(uid, "오늘부터 계속 익절 기준을 지켜라")
+    monkeypatch.setattr(sd, "_now_dt_kst", lambda: datetime(2026, 8, 10, 9, 0, tzinfo=sd.KST))
+    assert "오늘부터 계속" in sd.build_orchestrator_directive_block(uid)
 
 
 def test_persistence_across_calls(isolated_profiles, tmp_path):
