@@ -55,7 +55,7 @@ def resources(value: Resources, request: Request):
 
 
 @router.get('/api/logs')
-def logs(request:Request,after: int = Query(0, ge=0),market: str|None=Query(None,pattern='^(kr|us)$')):
+def logs(request:Request,after: int = Query(0, ge=0),market: str|None=Query(None,pattern='^(kr|us|crypto|timefolio)$')):
     from .auth import admin_required
     admin_required(request)
     with connect() as db:
@@ -107,12 +107,6 @@ def seed(value: Seed, request: Request):
         if not genomes:raise ValueError()
     except (KeyError,ValueError,TypeError):raise HTTPException(422,'AI가 지원 범위에 맞는 전략을 반환하지 않았습니다.')
     ids=research.save_candidates(person['id'],value.market,genomes,provider)
-    if value.market=='timefolio' and person['role']=='admin':
-        with connect() as db:
-            for g in genomes:
-                db.execute("INSERT OR IGNORE INTO jobs(id,genome,model_id,generation,parents,operator,status,created) VALUES (?,?,?,?,?,?,'queued',?)",
-                    (fingerprint(g),json.dumps(g),model_fingerprint(g,'pending'),int(setting('generation',0))+1,'[]',provider,time.time()))
-        set_setting('seed_genomes',genomes)
     return dict(count=len(ids),ids=ids,message=research.protocol(value.market)['message'])
 
 
@@ -129,8 +123,10 @@ def account(mode: str,request:Request):
     from .auth import user,get_connection
     import sys
     person=user(request)
-    if mode not in ['timefolio','kis-live','kis-paper']:raise HTTPException(404)
+    if mode not in ['timefolio','kis-live']:raise HTTPException(404)
     result=dict(connected=False,equity=[],message='계좌 연결 정보를 등록해 주세요.',total_eval=None,cash=None,pnl_ratio=None,holdings=[],trades=[])
+    if mode=='kis-live':
+        return dict(result,stopped=True,orders_enabled=False,message='사용자 요청으로 실매매 정지 · 주문·전략 적용 차단')
     credential=get_connection(person['id'],mode)
     if not credential and (person['role']!='admin' or mode=='timefolio'):return result
     import hashlib

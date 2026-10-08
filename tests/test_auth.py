@@ -115,28 +115,27 @@ def test_expired_session_and_secure_remote_cookie(client):
 
 def test_signup_optional_connections_are_encrypted_and_scoped(client):
     kis = {'app_key': 'example-app-key', 'app_secret': 'example-app-secret',
-           'account_no': '12345678', 'account_product': '01', 'mode': 'paper'}
+           'account_no': '12345678', 'account_product': '01', 'mode': 'live'}
     tf = {'username': 'example-timefolio', 'password': 'example-tf-password'}
     response = client.post('/api/auth/register', headers=HEADERS,
         json={'username': 'connected', 'password': MEMBER_PASSWORD, 'kis': kis, 'timefolio': tf})
     assert response.status_code == 200
     login_result = log_in(client, 'connected', MEMBER_PASSWORD).json()
     uid = login_result['id']
-    assert auth.get_connection(uid, 'kis-paper') == kis
+    assert auth.get_connection(uid, 'kis-live') == kis
     assert auth.get_connection(uid, 'timefolio') == tf
-    assert auth.get_connection(1, 'kis-paper') is None
+    assert auth.get_connection(1, 'kis-live') is None
     with auth.connect() as db:
         stored = b''.join(row['secret'] for row in db.execute('SELECT secret FROM connections'))
     assert b'example-app-secret' not in stored
     assert b'12345678' not in stored
     assert b'example-tf-password' not in stored
     metadata = client.get('/api/auth/connections').json()
-    assert metadata == {'connections': [{'kind': 'kis-live', 'configured': False},
-        {'kind': 'kis-paper', 'configured': True}, {'kind': 'timefolio', 'configured': True}]}
+    assert metadata == {'connections': [{'kind': 'kis-live', 'configured': True}, {'kind': 'timefolio', 'configured': True}]}
     assert client.post('/api/auth/connections', headers=HEADERS,
         json={'kis': {**kis, 'mode': 'live'}}).status_code == 200
     assert all(item['configured'] for item in client.get('/api/auth/connections').json()['connections'])
-    assert auth.get_connection(uid, 'kis-paper')['mode'] == 'paper'
+    assert auth.get_connection(uid, 'kis-live')['mode'] == 'live'
     client.post('/api/auth/logout', headers=HEADERS)
     log_in(client)
     assert not any(item['configured'] for item in client.get('/api/auth/connections').json()['connections'])

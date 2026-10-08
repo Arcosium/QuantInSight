@@ -1,0 +1,267 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "QuantInSight 전략 연구 · 계좌 운용" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - text: QuantInSight
+      - generic [ref=e4]: 전략 연구 · 계좌 운용
+    - generic [ref=e5]: 연구 상태 확인 중
+  - navigation "시장" [ref=e8]:
+    - button "데이터셋" [ref=e9] [cursor=pointer]
+    - button "한국주식" [ref=e10] [cursor=pointer]
+    - button "미국주식" [ref=e11] [cursor=pointer]
+    - button "크립토" [ref=e12] [cursor=pointer]
+    - button "타임폴리오" [ref=e13] [cursor=pointer]
+    - button "계좌 연결" [ref=e14] [cursor=pointer]
+    - button "로그아웃" [ref=e15] [cursor=pointer]
+  - navigation "시장 메뉴" [ref=e16]:
+    - button "페이퍼매매" [ref=e17] [cursor=pointer]
+    - button "한투 실매매" [ref=e18] [cursor=pointer]
+    - button "연구소" [ref=e19] [cursor=pointer]
+  - main [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - heading "한국주식 연구소" [level=1] [ref=e23]
+        - generic [ref=e24]: 최근 36개월
+      - paragraph
+      - paragraph
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - heading "인공지능 투자모델 연구" [level=2] [ref=e28]
+            - status [ref=e29]: 연구 상태 확인 중
+          - generic [ref=e30]:
+            - button "연구 시작" [ref=e31] [cursor=pointer]
+            - button "연구 중단" [ref=e32] [cursor=pointer]
+        - paragraph [ref=e33]: 데이터·필드 조합 → 모델 학습 → 최근 36개월 평가 → 유전 알고리즘으로 다음 후보 생성
+        - group [ref=e34]:
+          - generic "학습 모델 보관 방식" [ref=e35] [cursor=pointer]
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - text: CPU (코어)
+            - spinbutton "CPU (코어)" [ref=e38]: "4"
+          - generic [ref=e39]:
+            - text: 메모리 (GiB)
+            - spinbutton "메모리 (GiB)" [ref=e40]: "8"
+          - generic [ref=e41]:
+            - text: 동시 실험
+            - spinbutton "동시 실험" [ref=e42]: "2"
+          - button "한도 적용" [ref=e43] [cursor=pointer]
+          - status
+        - generic [ref=e44]:
+          - generic [ref=e45]:
+            - text: 전략 입력
+            - textbox "전략 입력" [ref=e46]:
+              - /placeholder: 연구할 모델·데이터·목표를 입력하세요
+          - button "로컬 AI로 알파 생성" [ref=e47] [cursor=pointer]
+          - status
+        - group [ref=e48]:
+          - generic "실험 후보와 진행 로그" [ref=e49] [cursor=pointer]
+        - paragraph
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - generic [ref=e52]: 현재 비교 전략
+          - strong [ref=e53]: 40 / 40
+        - generic [ref=e54]:
+          - generic [ref=e55]: 최고 순수익률
+          - strong [ref=e56]: 144.99%
+        - generic [ref=e57]:
+          - generic [ref=e58]: 파레토 전략
+          - strong [ref=e59]: 5개
+        - generic [ref=e60]:
+          - generic [ref=e61]: 자동 탐색
+          - strong [ref=e62]: …
+      - generic [ref=e63]:
+        - heading "실험 지도" [level=2] [ref=e65]
+        - generic [ref=e67]:
+          - text: 파레토 경계
+          - combobox "파레토 경계" [ref=e68]:
+            - option "전체 실험" [selected]
+      - generic [ref=e69]:
+        - paragraph [ref=e70]: 수익률 ↑ · 손실 개월 수 ↓
+        - generic [ref=e71]: 전체 실험 파레토 경계
+      - img "손실 개월 수와 순수익률의 파레토 그래프" [ref=e75]:
+        - generic [ref=e76]: "-12%"
+        - generic [ref=e77]: "8.0"
+        - generic [ref=e78]: 30%
+        - generic [ref=e79]: "10.3"
+        - generic [ref=e80]: 72%
+        - generic [ref=e81]: "12.5"
+        - generic [ref=e82]: 115%
+        - generic [ref=e83]: "14.8"
+        - generic [ref=e84]: 157%
+        - generic [ref=e85]: "17.0"
+        - generic [ref=e86]: 누적 순수익률 ↑
+        - generic [ref=e87]: 손실 개월 수 감소 →
+        - button "ridge · 5 · price · 5일" [ref=e89] [cursor=pointer]
+        - button "lowvol_momentum · 20 · 14일 · regime_gate · α10" [ref=e90] [cursor=pointer]
+        - button "momentum · 20 · 14일 · rank_only · α10" [ref=e91] [cursor=pointer]
+        - button "momentum · 20 · 28일 · rank_only · α10" [ref=e92] [cursor=pointer]
+        - button "trend_momentum · 20 · 28일 · rank_only · α10" [ref=e93] [cursor=pointer]
+        - button "trend_momentum · 20 · 14일 · rank_only · α10" [ref=e94] [cursor=pointer]
+        - button "lowvol_momentum · 20 · 28일 · rank_only · α10" [ref=e95] [cursor=pointer]
+        - button "lowvol_momentum · 20 · 14일 · rank_only · α10" [ref=e96] [cursor=pointer]
+        - button "trend_momentum · 20 · 5일 · rank_only · α10" [ref=e97] [cursor=pointer]
+        - button "momentum · 20 · 5일 · rank_only · α10" [ref=e98] [cursor=pointer]
+        - button "lowvol_momentum · 20 · 5일 · rank_only · α10" [ref=e99] [cursor=pointer]
+        - button "fourier · 20 · 14일 · regime_gate · α10" [ref=e100] [cursor=pointer]
+        - button "reversal · 20 · 28일 · rank_only · α10" [ref=e101] [cursor=pointer]
+        - button "mtf · 20 · 28일 · rank_only · α10" [ref=e102] [cursor=pointer]
+        - button "image_rank_ensemble · 20 · 28일 · rank_only · α10" [ref=e103] [cursor=pointer]
+        - button "reversal · 20 · 14일 · rank_only · α10" [ref=e104] [cursor=pointer]
+        - button "image_rank_ensemble · 20 · 14일 · regime_gate · α10" [ref=e105] [cursor=pointer]
+        - button "fourier · 20" [ref=e106] [cursor=pointer]
+        - button "fourier · 20" [ref=e107] [cursor=pointer]
+        - button "gasf · 20 · 28일 · rank_only · α10" [ref=e108] [cursor=pointer]
+        - button "reversal · 20 · 14일 · regime_gate · α10" [ref=e109] [cursor=pointer]
+        - button "gasf · 20 · 14일 · rank_only · α10" [ref=e110] [cursor=pointer]
+        - button "mtf · 20 · 14일 · regime_gate · α10" [ref=e111] [cursor=pointer]
+        - button "gasf · 20 · 5일 · rank_only · α10" [ref=e112] [cursor=pointer]
+        - button "candle_hog · 20 · 14일 · rank_only · α10" [ref=e113] [cursor=pointer]
+        - button "gasf · 20 · 14일 · regime_gate · α10" [ref=e114] [cursor=pointer]
+        - button "recurrence · 20 · 14일 · regime_gate · α10" [ref=e115] [cursor=pointer]
+        - button "mtf · 20 · 14일 · rank_only · α10" [ref=e116] [cursor=pointer]
+        - button "reversal · 20 · 5일 · rank_only · α10" [ref=e117] [cursor=pointer]
+        - button "image_rank_ensemble · 20 · 14일 · rank_only · α10" [ref=e118] [cursor=pointer]
+        - button "fourier · 20 · 5일 · rank_only · α10" [ref=e119] [cursor=pointer]
+        - button "candle_hog · 20 · 14일 · regime_gate · α10" [ref=e120] [cursor=pointer]
+        - button "image_rank_ensemble · 20 · 5일 · rank_only · α10" [ref=e121] [cursor=pointer]
+        - button "recurrence · 20 · 14일 · rank_only · α10" [ref=e122] [cursor=pointer]
+        - button "mtf · 20 · 5일 · rank_only · α10" [ref=e123] [cursor=pointer]
+        - button "extra_trees · 10 · price_risk · 10일" [ref=e124] [cursor=pointer]
+        - button "momentum · 20 · 14일 · regime_gate · α10" [ref=e125] [cursor=pointer]
+        - button "trend_momentum · 20 · 14일 · regime_gate · α10" [ref=e126] [cursor=pointer]
+        - button "fourier · 20 · 28일 · rank_only · α10" [ref=e127] [cursor=pointer]
+        - button "fourier · 20" [ref=e128] [cursor=pointer]
+      - paragraph [ref=e129]: 20231004 ~ 20260930 · 최근 36개월
+      - generic [ref=e130]:
+        - heading "전략 리더보드" [level=2] [ref=e132]
+        - generic [ref=e133]:
+          - generic [ref=e134]:
+            - text: 전략 검색
+            - searchbox "전략 검색" [ref=e135]
+          - generic [ref=e136]:
+            - text: 보기
+            - combobox "보기" [ref=e137]:
+              - option "전체 실험" [selected]
+              - option "파레토 전략"
+              - option "회전율 통과 전략"
+      - paragraph [ref=e138]: 40개 전략 · 페이지당 10개
+      - table [ref=e140]:
+        - rowgroup [ref=e141]:
+          - row [ref=e142]:
+            - columnheader "전략 / 모델" [ref=e143]
+            - columnheader [ref=e144]:
+              - button "순수익률 ↓" [ref=e145] [cursor=pointer]
+            - columnheader [ref=e146]:
+              - button "손실 개월" [ref=e147] [cursor=pointer]
+            - columnheader "샤프" [ref=e148]
+            - columnheader "비교 시작일" [ref=e149]
+            - columnheader "검증 상태" [ref=e150]
+        - rowgroup [ref=e151]:
+          - row [ref=e152]:
+            - cell "extra_trees · 10 · price_risk · 10일 인공지능 학습 · extra_treesPARETO" [ref=e153]:
+              - link "extra_trees · 10 · price_risk · 10일" [ref=e154] [cursor=pointer]:
+                - /url: /strategy/c24b4a2e95760e853e14
+              - generic [ref=e155]: 인공지능 학습 · extra_treesPARETO
+            - cell "144.99%" [ref=e156]
+            - cell "12.00 / 36" [ref=e157]
+            - cell "0.88" [ref=e158]
+            - cell "1개" [ref=e159]
+            - cell "회전율 확인 전" [ref=e160]
+          - row [ref=e161]:
+            - cell "ridge · 5 · price · 5일 인공지능 학습 · ridge" [ref=e162]:
+              - link "ridge · 5 · price · 5일" [ref=e163] [cursor=pointer]:
+                - /url: /strategy/f04361d63bf88a07564f
+              - generic [ref=e164]: 인공지능 학습 · ridge
+            - cell "135.06%" [ref=e165]
+            - cell "12.00 / 36" [ref=e166]
+            - cell "1.16" [ref=e167]
+            - cell "1개" [ref=e168]
+            - cell "회전율 확인 전" [ref=e169]
+          - row [ref=e170]:
+            - cell "momentum · 20 · 14일 · regime_gate · α10 학술제 확장 · 가격·위험 비교PARETO" [ref=e171]:
+              - link "momentum · 20 · 14일 · regime_gate · α10" [ref=e172] [cursor=pointer]:
+                - /url: /strategy/83898471399335f1a82e
+              - generic [ref=e173]: 학술제 확장 · 가격·위험 비교PARETO
+            - cell "102.89%" [ref=e174]
+            - cell "11.00 / 36" [ref=e175]
+            - cell "2.15" [ref=e176]
+            - cell "1개" [ref=e177]
+            - cell "회전율 확인 전" [ref=e178]
+          - row [ref=e179]:
+            - cell "trend_momentum · 20 · 14일 · regime_gate · α10 학술제 확장 · 가격·위험 비교PARETO" [ref=e180]:
+              - link "trend_momentum · 20 · 14일 · regime_gate · α10" [ref=e181] [cursor=pointer]:
+                - /url: /strategy/3d7350fbf5a3b879fb14
+              - generic [ref=e182]: 학술제 확장 · 가격·위험 비교PARETO
+            - cell "102.89%" [ref=e183]
+            - cell "11.00 / 36" [ref=e184]
+            - cell "2.15" [ref=e185]
+            - cell "1개" [ref=e186]
+            - cell "회전율 확인 전" [ref=e187]
+          - row [ref=e188]:
+            - cell "lowvol_momentum · 20 · 14일 · regime_gate · α10 학술제 확장 · 가격·위험 비교" [ref=e189]:
+              - link "lowvol_momentum · 20 · 14일 · regime_gate · α10" [ref=e190] [cursor=pointer]:
+                - /url: /strategy/367dba60f2064e07fe72
+              - generic [ref=e191]: 학술제 확장 · 가격·위험 비교
+            - cell "96.25%" [ref=e192]
+            - cell "11.00 / 36" [ref=e193]
+            - cell "2.30" [ref=e194]
+            - cell "1개" [ref=e195]
+            - cell "회전율 확인 전" [ref=e196]
+          - row [ref=e197]:
+            - cell "fourier · 20 · 28일 · rank_only · α10 학술제 확장 · 차트 이미지PARETO" [ref=e198]:
+              - link "fourier · 20 · 28일 · rank_only · α10" [ref=e199] [cursor=pointer]:
+                - /url: /strategy/7b3971fa0d396c099539
+              - generic [ref=e200]: 학술제 확장 · 차트 이미지PARETO
+            - cell "85.42%" [ref=e201]
+            - cell "10.00 / 36" [ref=e202]
+            - cell "1.52" [ref=e203]
+            - cell "1개" [ref=e204]
+            - cell "회전율 확인 전" [ref=e205]
+          - row [ref=e206]:
+            - cell "momentum · 20 · 14일 · rank_only · α10 학술제 확장 · 가격·위험 비교" [ref=e207]:
+              - link "momentum · 20 · 14일 · rank_only · α10" [ref=e208] [cursor=pointer]:
+                - /url: /strategy/617c289300933f20dd30
+              - generic [ref=e209]: 학술제 확장 · 가격·위험 비교
+            - cell "77.65%" [ref=e210]
+            - cell "13.00 / 36" [ref=e211]
+            - cell "1.40" [ref=e212]
+            - cell "1개" [ref=e213]
+            - cell "회전율 확인 전" [ref=e214]
+          - row [ref=e215]:
+            - cell "momentum · 20 · 28일 · rank_only · α10 학술제 확장 · 가격·위험 비교" [ref=e216]:
+              - link "momentum · 20 · 28일 · rank_only · α10" [ref=e217] [cursor=pointer]:
+                - /url: /strategy/847476980ab5a6602dbb
+              - generic [ref=e218]: 학술제 확장 · 가격·위험 비교
+            - cell "77.63%" [ref=e219]
+            - cell "12.00 / 36" [ref=e220]
+            - cell "1.41" [ref=e221]
+            - cell "1개" [ref=e222]
+            - cell "회전율 확인 전" [ref=e223]
+          - row [ref=e224]:
+            - cell "trend_momentum · 20 · 28일 · rank_only · α10 학술제 확장 · 가격·위험 비교" [ref=e225]:
+              - link "trend_momentum · 20 · 28일 · rank_only · α10" [ref=e226] [cursor=pointer]:
+                - /url: /strategy/61089752959fdb24a7ed
+              - generic [ref=e227]: 학술제 확장 · 가격·위험 비교
+            - cell "76.92%" [ref=e228]
+            - cell "12.00 / 36" [ref=e229]
+            - cell "1.41" [ref=e230]
+            - cell "1개" [ref=e231]
+            - cell "회전율 확인 전" [ref=e232]
+          - row [ref=e233]:
+            - cell "trend_momentum · 20 · 14일 · rank_only · α10 학술제 확장 · 가격·위험 비교" [ref=e234]:
+              - link "trend_momentum · 20 · 14일 · rank_only · α10" [ref=e235] [cursor=pointer]:
+                - /url: /strategy/069df9a34ef5afacfe17
+              - generic [ref=e236]: 학술제 확장 · 가격·위험 비교
+            - cell "74.55%" [ref=e237]
+            - cell "13.00 / 36" [ref=e238]
+            - cell "1.37" [ref=e239]
+            - cell "1개" [ref=e240]
+            - cell "회전율 확인 전" [ref=e241]
+      - generic [ref=e242]:
+        - button "이전" [disabled] [ref=e243]
+        - generic [ref=e244]: 1 / 4
+        - button "다음" [ref=e245] [cursor=pointer]
+  - contentinfo [ref=e246]:
+    - generic [ref=e247]: QuantInSight
+    - generic [ref=e248]: 전략 연구 · 계좌 운용

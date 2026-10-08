@@ -148,13 +148,13 @@ class KISConnection(BaseModel):
     app_secret: str = Field(default='', max_length=2000)
     account_no: str = Field(default='', max_length=8)
     account_product: str = Field(default='', max_length=2)
-    mode: str = 'paper'
+    mode: str = 'live'
 
     @model_validator(mode='after')
     def validate_connection(self):
         for field in ('app_key', 'app_secret', 'account_no', 'account_product'):
             setattr(self, field, getattr(self, field).strip())
-        if self.mode not in {'live', 'paper'}:
+        if self.mode != 'live':
             raise HTTPException(422, '한국투자증권 계좌 유형을 확인해 주세요.')
         if self.app_key or self.app_secret or self.account_no or self.account_product:
             if not all((self.app_key, self.app_secret, self.account_no, self.account_product)):
@@ -201,7 +201,7 @@ def store_connections(db, user_id, value):
 
 
 def get_connection(user_id, kind):
-    if kind not in {'kis-live', 'kis-paper', 'timefolio'}:
+    if kind not in {'kis-live', 'timefolio'}:
         return None
     with connect() as db:
         row = db.execute('SELECT secret FROM connections WHERE user_id=? AND kind=?', (user_id, kind)).fetchone()
@@ -212,7 +212,7 @@ def connection_metadata(user_id):
     with connect() as db:
         kinds = {row['kind'] for row in db.execute('SELECT kind FROM connections WHERE user_id=?', (user_id,))}
     return {'connections': [{'kind': kind, 'configured': kind in kinds}
-                            for kind in ('kis-live', 'kis-paper', 'timefolio')]}
+                            for kind in ('kis-live', 'timefolio')]}
 
 
 @router.get('/api/auth/connections')

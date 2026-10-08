@@ -44,6 +44,9 @@ def main():
     initialize()
     from . import research
     research.initialize()
+    from .deployment import initialize as deployment_init
+    deployment_init()
+    with connect() as db:db.execute("UPDATE model_deployments SET status='queued',message='재학습 재개 대기' WHERE status='training'")
     with connect() as db:db.execute("UPDATE alpha_candidates SET status='queued',message='중단된 평가 재개 대기' WHERE status='running'")
     children={}
     last_refresh=time.time()
@@ -74,10 +77,10 @@ def main():
             market_running=research.tick(max(0,min(8,int(setting('concurrency',2)))-len(running)))
         except Exception as exc:
             event('failed',dict(message='연구 대기열 점검 실패',error=str(exc)[:200]))
-            market_running=len(research._PROCESSES)+len(research._INPUT_PROCESSES)
+            market_running=sum(map(len,(research._PROCESSES,research._INPUT_PROCESSES,research._PLANNERS,research._DEPLOYMENTS,research._PAPER)))
         set_setting('market_running',market_running)
         # Model/result parity is an evidence gate, not an elapsed-time approval.
-        if not setting('enabled',True) or not setting('baseline_verified'):
+        if setting('labs_v2_enabled',False) or not setting('enabled',True) or not setting('baseline_verified'):
             time.sleep(10)
             continue
         capacity=max(0,min(8,int(setting('concurrency',2)))-len(running)-market_running)

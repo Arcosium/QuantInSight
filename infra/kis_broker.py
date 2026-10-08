@@ -626,6 +626,7 @@ class KISBroker:
 
     # ═══════════════════ 국내주식 주문 ═══════════════════
     async def kr_buy(self, code: str, qty: int, price: int = 0, exchange: str = "KRX") -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         raw_price = float(price or 0)
         price = ceil_to_tick(raw_price)
         if raw_price > 0 and price != raw_price:
@@ -710,6 +711,7 @@ class KISBroker:
                 else f"[취소실패] {pdno} {odno} → {_clean_kis_msg(d.get('msg1',''))}")
 
     async def kr_sell(self, code: str, qty: int, price: int = 0, exchange: str = "KRX") -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         raw_price = float(price or 0)
         price = ceil_to_tick(raw_price)
         if raw_price > 0 and price != raw_price:
@@ -2050,6 +2052,7 @@ class KISBroker:
                 "ORD_SVR_DVSN_CD": "0", "ORD_DVSN": "00"}
 
     async def us_buy(self, ticker: str, qty: int, price: float = 0, excd: str = "NASD") -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         body = await self._overseas_order_body(ticker, qty, price, side="buy", excd=excd)
         if isinstance(body, str):
             return body
@@ -2067,6 +2070,7 @@ class KISBroker:
                 f"[US매수 실패] {ticker} {qty}주 → {msg}")
 
     async def us_sell(self, ticker: str, qty: int, price: float = 0, excd: str = "NASD") -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         body = await self._overseas_order_body(ticker, qty, price, side="sell", excd=excd)
         if isinstance(body, str):
             return body
@@ -2103,6 +2107,7 @@ class KISBroker:
         return f"[채권시세] {code} | {d.get('bond_prpr','')} | 수익률: {d.get('bond_ytm','')}"
 
     async def bond_buy(self, code: str, qty: int, price: float) -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         tok = await self.token(); s = await self._s(); c, p = self._acnt()
         await self._pace()
         async with s.post(f"{self.base_url}/uapi/domestic-bond/v1/trading/order",
@@ -2120,6 +2125,7 @@ class KISBroker:
         return f"[해외선물] {code} | {d.get('last','?')} | {d.get('rate','')}%"
 
     async def futures_buy(self, code: str, qty: int, price: float, excd: str = "CME") -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         tok = await self.token(); s = await self._s(); c, p = self._acnt()
         await self._pace()
         async with s.post(f"{self.base_url}/uapi/overseas-futureoption/v1/trading/order",
@@ -2144,6 +2150,7 @@ class KISBroker:
 
     # ═══════════════════ 통합 주문 ═══════════════════
     async def place_order(self, order: OrderDraft) -> str:
+        return "[주문 차단] 사용자 요청으로 QuantInSight 실매매가 정지되어 있습니다."
         if not order.approved:
             return "[주문 거부] 리스크관리실 승인 필요"
         if order.market == "KR":

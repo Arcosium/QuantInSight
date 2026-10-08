@@ -28,7 +28,7 @@ def _identity(uid, market, genome, period):
 
 def proposals():
     """Yield baseline comparison, single-variable checks, then remaining space."""
-    domain = research.domains('kr')
+    domain = research.STOCK_DOMAINS
     preferred = dict(selection_count=20, holding_sessions=14, ridge_alpha=10.,
                      mode='rank_only', window=20)
     base = {k: preferred.get(k, values[0]) if preferred.get(k) in values else values[0]

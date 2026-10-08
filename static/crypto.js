@@ -1,7 +1,7 @@
 'use strict';
 const cryptoPaper=(()=>{
  const c={book:null,summary:null,model:'cnn',symbol:'BTC',side:null,posPage:0,tradePage:0,seq:0,chartSeq:0,candles:null,busy:false};
- const active=()=>state.tab==='crypto'&&state.subtab==='paper';
+ const active=()=>state.tab==='crypto'&&state.subtab==='paper'&&!$('crypto-panel').hidden;
  const num=v=>Number.isFinite(v)?new Intl.NumberFormat('ko-KR',{maximumFractionDigits:6}).format(v):'미확인';
  const usd=v=>Number.isFinite(v)?new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2}).format(v):'미확인';
  const pct=v=>Number.isFinite(v)?`${v.toFixed(2)}%`:'미확인';

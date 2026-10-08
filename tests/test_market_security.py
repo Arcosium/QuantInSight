@@ -22,11 +22,13 @@ def member(tmp_path,monkeypatch):
     return c
 
 def test_members_cannot_read_owner_accounts_or_change_limits(member):
-    for mode in ['kis-live','kis-paper','timefolio']:
+    for mode in ['kis-live','timefolio']:
         with patch('autofolio.controls.subprocess.run') as run:
             r=member.get('/api/accounts/'+mode)
             assert r.status_code==200 and not r.json()['connected'] and not r.json()['holdings']
             run.assert_not_called()
+    assert member.get('/api/accounts/kis-paper').status_code==404
+    assert member.get('/api/accounts/kis-live').json()['stopped'] is True
     assert member.post('/api/resources',headers=H,json=dict(cpu_cores=1,memory_gb=2,parallel=1)).status_code==403
     assert member.get('/api/status').status_code==403
     assert member.get('/api/logs').status_code==403
@@ -72,11 +74,11 @@ def test_apply_preserves_market_and_member_scope(member):
     with patch('autofolio.market_routes.strategy_case',return_value=(summary,{})):
         options=member.get('/api/strategy/test/targets').json()['targets']
         assert [o['id'] for o in options]==['us-paper']
-        assert member.post('/api/strategy/test/apply',headers=H,json={'target':'kis-live'}).status_code==403
-        with patch('autofolio.market_routes.connect') as db:
+        assert member.post('/api/strategy/test/apply',headers=H,json={'target':'kis-live'}).status_code==409
+        with patch('autofolio.deployment.request_retrain',return_value='deployment') as queue:
             r=member.post('/api/strategy/test/apply',headers=H,json={'target':'us-paper'})
-            assert r.status_code==200 and r.json()['status']=='awaiting_signal'
-            db.assert_called_once()
+            assert r.status_code==200 and r.json()['status']=='retraining'
+            queue.assert_called_once_with(2,'test','us-paper')
         summary['owner_id']=3
         assert member.get('/api/strategy/test/targets').status_code==404
 

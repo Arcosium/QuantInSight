@@ -41,7 +41,8 @@ def index(identity=None):return FileResponse(ROOT/'static/index.html')
 @app.get('/api/leaderboard')
 def leaderboard(request:Request,cohort: str|None=None,market:str=Query("kr",pattern="^(kr|us|crypto|timefolio)$")):
     from .period import accepts, window
-    all_rows=[r for r in rows() if accepts(r) and research.visible(r,user(request),market)]
+    all_rows=[r for r in rows() if accepts(r) and research.visible(r,user(request),market)
+              and (not setting('labs_v2_enabled',False) or (r.get('genome') or {}).get('engine')=='learned_v1')]
     cohorts={}
     for r in all_rows:
         cohorts.setdefault(r['cohort'],dict(id=r['cohort'],start=r['start'],end=r['end'],sessions=r['sessions'],months=r['months'],count=0))['count']+=1

@@ -142,12 +142,21 @@ def run(identity):
     if not r:raise ValueError('Unknown candidate')
     candidate=dict(r);destination=RUNS/'market_experiments'/identity;destination.mkdir(parents=True,exist_ok=True)
     try:
-        if candidate['market'] not in ('kr','us'):raise ValueError('지원하지 않는 시장')
-        path=stock_evaluate(candidate,destination)
+        if 'model' in json.loads(candidate['definition']):
+            from . import learning
+            fit=learning.fit_model
+            def logged_fit(p,names,first,g):
+                event('training',dict(job=identity,market=candidate['market'],quarter=str(first.date()),message=g['model']+' 모델 학습'))
+                return fit(p,names,first,g)
+            learning.fit_model=logged_fit
+            path=learning.evaluate(candidate,destination)
+        else:
+            if candidate['market'] not in ('kr','us'):raise ValueError('지원하지 않는 시장')
+            path=stock_evaluate(candidate,destination)
         from .catalogue import ingest_file
         status,count=ingest_file(path,path.stat())
         if status!='indexed' or count!=1:raise ValueError('36개월 계좌 검증 실패')
-        with connect() as db:db.execute("UPDATE alpha_candidates SET status='done',result=?,message='36개월 평가 완료' WHERE id=?",(str(path),identity))
+        with connect() as db:db.execute("UPDATE alpha_candidates SET status='done',result=?,message='36개월 평가 완료' WHERE id=?",(str(path.resolve()),identity))
         event('market_completed',dict(job=identity,market=candidate['market'],message='36개월 평가 완료'))
     except Exception as exc:
         with connect() as db:db.execute("UPDATE alpha_candidates SET status='failed',message=? WHERE id=?",(str(exc)[:300],identity))

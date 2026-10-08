@@ -11,7 +11,7 @@ from .config import REPORT_ROOTS
 from .metrics import evaluation_scope, ledger, normalized_date, statistics_for
 from .store import connect, event, setting, set_setting
 
-INDEX_VERSION=8
+INDEX_VERSION=9
 
 
 def sha(path):
@@ -148,7 +148,7 @@ def ingest_file(path,stat):
             means={k:statistics.mean(c['metrics'][k] for c in cases) for k in ['net_return','negative_months','mdd','mean_loss_month','worst_month']}
             sharpes=[c['metrics']['sharpe'] for c in cases if c['metrics']['sharpe'] is not None]
             first=cases[0]['metrics']
-            genome=report.get('genome') if isinstance(report,dict) else None
+            genome=(report.get('genome') or report.get('definition')) if isinstance(report,dict) else None
             payload=dict(id=identity,title=report.get('title') or (genome_title(genome) if genome else title_for(path,key)),family=report.get('family') or family_for(path,report),cohort=cohort,market=report.get('market','timefolio'),owner_id=report.get('owner_id'),
                 **means,sharpe=statistics.mean(sharpes) if sharpes else None,months=first['months'],start=first['start'],end=first['end'],
                 sessions=first['sessions'],phase_count=len(cases),return_min=min(c['metrics']['net_return'] for c in cases),
@@ -159,7 +159,7 @@ def ingest_file(path,stat):
                 contest_certified=bool(report.get('contest_certified',False)) if isinstance(report,dict) else False,
                 cases=cases,source_digest=source_digest,source_name=path.parent.name+'/'+path.name,
                 limitations=report.get('limitations') or ['과거 개발 표본 재사용','여러 시작일은 독립 폴드가 아닌 민감도 비교','종목·섹터·체결 자료의 근사치 및 현금 배당 미정산'],
-                genome=report.get('genome') if isinstance(report,dict) else None)
+                genome=(report.get('genome') or report.get('definition')) if isinstance(report,dict) else None)
             db.execute('INSERT INTO strategies VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,family=excluded.family,cohort=excluded.cohort,payload=excluded.payload,updated=excluded.updated',
                        (identity,payload['title'],payload['family'],cohort,json.dumps(payload,ensure_ascii=False,allow_nan=False),str(path.resolve()),time.time()))
             count+=1
