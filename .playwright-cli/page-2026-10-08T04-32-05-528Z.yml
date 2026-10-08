@@ -1,0 +1,126 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "QuantInSight 전략 연구 · 계좌 운용" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - text: QuantInSight
+      - generic [ref=e4]: 전략 연구 · 계좌 운용
+    - generic [ref=e5]: 연구 상태 확인 중
+  - navigation "시장" [ref=e8]:
+    - button "데이터셋" [ref=e9] [cursor=pointer]
+    - button "한국주식" [ref=e10] [cursor=pointer]
+    - button "미국주식" [ref=e11] [cursor=pointer]
+    - button "크립토" [ref=e12] [cursor=pointer]
+    - button "타임폴리오" [ref=e13] [cursor=pointer]
+    - button "계좌 연결" [ref=e14] [cursor=pointer]
+    - button "로그아웃" [ref=e15] [cursor=pointer]
+  - navigation "시장 메뉴" [ref=e16]:
+    - button "전략 연구" [ref=e17] [cursor=pointer]
+    - button "모의매매" [ref=e18] [cursor=pointer]
+  - main [ref=e19]:
+    - region [ref=e20]:
+      - generic [ref=e21]:
+        - heading "크립토 모의매매" [level=1] [ref=e22]
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - text: 운용 모델
+            - combobox "운용 모델" [ref=e25]:
+              - option "CNN 가중" [selected]
+              - option "CNN 기본"
+              - option "GBM v2"
+              - option "GBM v1"
+              - option "GBM 1d"
+          - button "새로고침" [ref=e26] [cursor=pointer]
+      - status [ref=e27]: 장부 조회 중
+      - paragraph
+      - heading "수익률 곡선" [level=2] [ref=e30]
+      - img "크립토 장부 마감 수익률" [ref=e32]
+      - paragraph
+      - generic [ref=e33]:
+        - heading "보유 포지션" [level=2] [ref=e34]
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - text: 종목 검색
+            - textbox "종목 검색" [ref=e37]:
+              - /placeholder: BTC, ETH
+          - generic [ref=e38]:
+            - text: 정렬
+            - combobox "정렬" [ref=e39]:
+              - option "신호 강도" [selected]
+              - option "평가 수익률"
+              - option "24시간 등락률"
+      - table [ref=e41]:
+        - rowgroup [ref=e42]:
+          - row [ref=e43]:
+            - columnheader "종목" [ref=e44]
+            - columnheader "방향" [ref=e45]
+            - columnheader "진입가" [ref=e46]
+            - columnheader "현재가" [ref=e47]
+            - columnheader "평가 금액 (USD)" [ref=e48]
+            - columnheader "평가 수익률" [ref=e49]
+        - rowgroup
+      - generic [ref=e50]:
+        - button "이전" [ref=e51] [cursor=pointer]
+        - button "다음" [ref=e52] [cursor=pointer]
+      - generic [ref=e53]:
+        - heading "종목 시세" [level=2] [ref=e54]
+        - generic [ref=e55]:
+          - text: 봉 간격
+          - combobox "봉 간격" [ref=e56]:
+            - option "15분"
+            - option "1시간"
+            - option "4시간" [selected]
+            - option "일봉"
+      - paragraph
+      - img "선택한 크립토 종목 OHLCV 차트" [ref=e58]
+      - paragraph [ref=e59]: 상승 봉은 금색, 하락 봉은 회색 · 시각 KST
+      - generic [ref=e60]:
+        - heading "매매 기록" [level=2] [ref=e61]
+        - generic [ref=e62]:
+          - text: 기록 종류
+          - combobox "기록 종류" [ref=e63]:
+            - option "진입 기록" [selected]
+            - option "청산 기록"
+      - paragraph
+      - generic:
+        - table:
+          - rowgroup
+          - rowgroup
+      - generic [ref=e64]:
+        - button "이전" [ref=e65] [cursor=pointer]
+        - button "다음" [ref=e66] [cursor=pointer]
+      - heading "최신 운용 신호" [level=2] [ref=e68]
+      - table [ref=e70]:
+        - rowgroup [ref=e71]:
+          - row [ref=e72]:
+            - columnheader "롱 후보" [ref=e73]
+            - columnheader "점수" [ref=e74]
+            - columnheader "숏 후보" [ref=e75]
+            - columnheader "점수" [ref=e76]
+        - rowgroup
+      - heading "모델 비교" [level=2] [ref=e78]
+      - paragraph [ref=e79]: 마감 수익률은 현재 장부 기준입니다. 논문 Sharpe는 과거 연구 수치입니다.
+      - table [ref=e81]:
+        - rowgroup [ref=e82]:
+          - row [ref=e83]:
+            - columnheader "모델" [ref=e84]
+            - columnheader "마감 순자산 (USD)" [ref=e85]
+            - columnheader "마감 수익률" [ref=e86]
+            - columnheader "논문 Sharpe" [ref=e87]
+        - rowgroup
+      - heading "급등락 알림" [level=2] [ref=e89]
+      - table [ref=e91]:
+        - rowgroup [ref=e92]:
+          - row [ref=e93]:
+            - columnheader "시각 (KST)" [ref=e94]
+            - columnheader "종목" [ref=e95]
+            - columnheader "구분" [ref=e96]
+            - columnheader "상승 확률" [ref=e97]
+            - columnheader "하락 확률" [ref=e98]
+        - rowgroup
+      - group [ref=e99]:
+        - generic "논문 기준" [ref=e100] [cursor=pointer]
+      - group [ref=e101]:
+        - generic "운영 로그" [ref=e102] [cursor=pointer]
+  - contentinfo [ref=e103]:
+    - generic [ref=e104]: QuantInSight
+    - generic [ref=e105]: 전략 연구 · 계좌 운용
