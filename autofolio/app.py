@@ -134,7 +134,7 @@ def status(request:Request):
         try:r['progress']=json.loads(path.read_text())
         except (OSError,ValueError):r['progress']=None
     heartbeat=setting('heartbeat',{})
-    return dict(enabled=setting('enabled'),worker_alive=time.time()-heartbeat.get('timestamp',0)<60,
+    return dict(market_running=setting('market_running',0),enabled=setting('enabled'),worker_alive=time.time()-heartbeat.get('timestamp',0)<60,
                 heartbeat=heartbeat,generation=setting('generation',0),jobs=counts,active=active,recent=recent,
                 coverage=coverage,baseline_verified=bool(setting('baseline_verified')),
                 validation_candidate=setting('validation_candidate'),

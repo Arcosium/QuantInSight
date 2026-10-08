@@ -70,7 +70,12 @@ def main():
                 importer=subprocess.Popen([sys.executable,'-c','from autofolio.catalogue import refresh; print(refresh(),flush=True)'],
                                           cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
             last_refresh=now
-        market_running=research.tick(max(0,min(8,int(setting('concurrency',2)))-len(running)))
+        try:
+            market_running=research.tick(max(0,min(8,int(setting('concurrency',2)))-len(running)))
+        except Exception as exc:
+            event('failed',dict(message='연구 대기열 점검 실패',error=str(exc)[:200]))
+            market_running=len(research._PROCESSES)+len(research._INPUT_PROCESSES)
+        set_setting('market_running',market_running)
         # Model/result parity is an evidence gate, not an elapsed-time approval.
         if not setting('enabled',True) or not setting('baseline_verified'):
             time.sleep(10)

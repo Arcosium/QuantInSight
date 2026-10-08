@@ -16,7 +16,9 @@ TARGETS={'kis-live':('kr','한투 (실매매)'), 'kis-paper':('kr','한투 (모�
 @router.get('/api/research/{market}')
 def status(market:str,request:Request):
     research.domains(market)
-    return dict(protocol=research.protocol(market),candidates=research.candidates(user(request)['id'],market))
+    person=user(request)
+    from .campaign import status as campaign_status
+    return dict(protocol=research.protocol(market),candidates=research.candidates(person['id'],market),campaign=campaign_status(person['id']) if person['role']=='admin' else None)
 
 @router.get('/api/strategy/{identity}/targets')
 def targets(identity:str,request:Request):

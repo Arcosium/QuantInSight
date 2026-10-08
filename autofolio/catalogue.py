@@ -11,7 +11,7 @@ from .config import REPORT_ROOTS
 from .metrics import evaluation_scope, ledger, normalized_date, statistics_for
 from .store import connect, event, setting, set_setting
 
-INDEX_VERSION=7
+INDEX_VERSION=8
 
 
 def sha(path):
@@ -158,7 +158,7 @@ def ingest_file(path,stat):
                 independent_holdout=bool(report.get('independent_holdout',False)) if isinstance(report,dict) else False,
                 contest_certified=bool(report.get('contest_certified',False)) if isinstance(report,dict) else False,
                 cases=cases,source_digest=source_digest,source_name=path.parent.name+'/'+path.name,
-                limitations=['과거 개발 표본 재사용','여러 시작일은 독립 폴드가 아닌 민감도 비교','종목·섹터·체결 자료의 근사치 및 현금 배당 미정산'],
+                limitations=report.get('limitations') or ['과거 개발 표본 재사용','여러 시작일은 독립 폴드가 아닌 민감도 비교','종목·섹터·체결 자료의 근사치 및 현금 배당 미정산'],
                 genome=report.get('genome') if isinstance(report,dict) else None)
             db.execute('INSERT INTO strategies VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,family=excluded.family,cohort=excluded.cohort,payload=excluded.payload,updated=excluded.updated',
                        (identity,payload['title'],payload['family'],cohort,json.dumps(payload,ensure_ascii=False,allow_nan=False),str(path.resolve()),time.time()))

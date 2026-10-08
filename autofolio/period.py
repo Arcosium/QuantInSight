@@ -23,7 +23,10 @@ def expected_dates(market,start,end):
         sys.path.insert(0,str(Path.home()/'vault/QuantInSight/python-deps'))
         import exchange_calendars as calendars
     cal=calendars.get_calendar('XNYS' if market=='us' else 'XKRX',start=start,end=end)
-    return tuple(d.strftime('%Y%m%d') for d in cal.sessions)
+    # KRX announced these additional 2026 closures on 2026-05-20.
+    # https://stock.mk.co.kr/news/disclosure/template/1029043 (exchange notice)
+    closures={'20260603','20260717'} if market!='us' else set()
+    return tuple(d.strftime('%Y%m%d') for d in cal.sessions if d.strftime('%Y%m%d') not in closures)
 
 
 def accepts(summary,today=None):

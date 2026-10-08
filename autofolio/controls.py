@@ -55,15 +55,20 @@ def resources(value: Resources, request: Request):
 
 
 @router.get('/api/logs')
-def logs(request:Request,after: int = Query(0, ge=0)):
+def logs(request:Request,after: int = Query(0, ge=0),market: str|None=Query(None,pattern='^(kr|us)$')):
     from .auth import admin_required
     admin_required(request)
     with connect() as db:
-        found = db.execute('SELECT id,timestamp,kind,body FROM events WHERE id>? ORDER BY id LIMIT 300', (after,)).fetchall()
+        condition="id>?";params=[after]
+        if market:
+            condition+=" AND (json_extract(body,'$.market')=? OR EXISTS (SELECT 1 FROM alpha_candidates a WHERE a.market=? AND a.id=COALESCE(json_extract(events.body,'$.job'),json_extract(events.body,'$.id'))) OR kind IN ('worker_started','resources_updated'))"
+            params.extend([market,market])
+        found=db.execute('SELECT id,timestamp,kind,body FROM events WHERE '+condition+' ORDER BY id '+('ASC' if after else 'DESC')+' LIMIT 300',params).fetchall()
+        if not after:found=list(reversed(found))
     names = {'job_started':'실험 시작', 'worker_started':'탐색 시작', 'catalogue_refresh':'결과 갱신',
              'resources_updated':'자원 한도 변경', 'seed_generated':'전략 생성', 'training':'모델 학습',
              'backtesting':'계좌 평가', 'failed':'실험 실패', 'model_cache_hit':'학습 결과 재사용',
-             'validation_required':'추가 검증 대기'}
+             'validation_required':'추가 검증 대기', 'market_completed':'평가 완료','campaign_proposals':'후속 실험 추가','research_input':'연구 입력 준비'}
     events=[]
     labels={'generation':'세대','quarter':'학습 분기','phase':'평가 계좌','iteration':'진행','total':'전체','count':'후보','cpu_cores':'CPU','memory_gb':'메모리','parallel':'동시 실행','start':'시작일','end':'종료일','months':'개월','error':'오류','message':''}
     for row in found:
