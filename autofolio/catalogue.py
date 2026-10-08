@@ -11,7 +11,7 @@ from .config import REPORT_ROOTS
 from .metrics import evaluation_scope, ledger, normalized_date, statistics_for
 from .store import connect, event, setting, set_setting
 
-INDEX_VERSION=6
+INDEX_VERSION=7
 
 
 def sha(path):
@@ -113,12 +113,15 @@ def ingest_file(path,stat):
     groups={}
     for pointer,case in nodes:
         codes=[str(t.get('code',t.get('ticker',''))) for t in case['trades'][:20]]
-        if codes and not any(c.isdigit() and len(c)==6 for c in codes):continue
+        if report.get('market','timefolio') in ('kr','timefolio') and codes and not any(c.isdigit() and len(c)==6 for c in codes):continue
         try:
             start,end,recorded=evaluation_scope(case)
             rows=ledger(case,start,end)
             metrics=statistics_for(rows)
             from .period import accepts
+            metrics['market']=report.get('market','timefolio')
+            from .period import require_complete
+            require_complete([r['date'] for r in rows],metrics['market'])
             if not accepts(metrics):continue
             if recorded and isinstance(recorded.get('pooled'),dict):
                 stored=recorded['pooled'].get('net_return')
@@ -146,7 +149,7 @@ def ingest_file(path,stat):
             sharpes=[c['metrics']['sharpe'] for c in cases if c['metrics']['sharpe'] is not None]
             first=cases[0]['metrics']
             genome=report.get('genome') if isinstance(report,dict) else None
-            payload=dict(id=identity,title=genome_title(genome) if genome else title_for(path,key),family=family_for(path,report),cohort=cohort,
+            payload=dict(id=identity,title=report.get('title') or (genome_title(genome) if genome else title_for(path,key)),family=report.get('family') or family_for(path,report),cohort=cohort,market=report.get('market','timefolio'),owner_id=report.get('owner_id'),
                 **means,sharpe=statistics.mean(sharpes) if sharpes else None,months=first['months'],start=first['start'],end=first['end'],
                 sessions=first['sessions'],phase_count=len(cases),return_min=min(c['metrics']['net_return'] for c in cases),
                 return_max=max(c['metrics']['net_return'] for c in cases),verification=verified,

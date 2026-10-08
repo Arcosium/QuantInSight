@@ -1,10 +1,10 @@
-"""Read-only research site. No credentials, broker imports or public mutations."""
+"""Authenticated market research and user-scoped account views."""
 import calendar
 import json
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from .config import ROOT, RUNS, ARC
@@ -13,7 +13,12 @@ from .catalogue import rows, strategy_case
 from .metrics import pareto_front, ledger, statistics_for, normalized_date, evaluation_scope
 
 initialize()
+from .auth import user,admin_required,AuthMiddleware,router as auth_router
+from . import research
+research.initialize()
 app=FastAPI(title='QuantInSight',docs_url=None,redoc_url=None)
+app.add_middleware(AuthMiddleware)
+app.include_router(auth_router)
 app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 
 
@@ -24,7 +29,7 @@ async def headers(request,call_next):
     response=await call_next(request)
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='same-origin'
-    response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+    response.headers.setdefault('Content-Security-Policy',"default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'")
     return response
 
 
@@ -34,9 +39,9 @@ def index(identity=None):return FileResponse(ROOT/'static/index.html')
 
 
 @app.get('/api/leaderboard')
-def leaderboard(cohort: str|None=None):
+def leaderboard(request:Request,cohort: str|None=None,market:str=Query("kr",pattern="^(kr|us|crypto|timefolio)$")):
     from .period import accepts, window
-    all_rows=[r for r in rows() if accepts(r)]
+    all_rows=[r for r in rows() if accepts(r) and research.visible(r,user(request),market)]
     cohorts={}
     for r in all_rows:
         cohorts.setdefault(r['cohort'],dict(id=r['cohort'],start=r['start'],end=r['end'],sessions=r['sessions'],months=r['months'],count=0))['count']+=1
@@ -52,7 +57,7 @@ def leaderboard(cohort: str|None=None):
     return dict(cohort=selected,cohorts=cohorts,strategies=points,total=len(all_rows),
                 frontier=[r['id'] for r in pareto_front(chosen)],
                 screened_frontier=[r['id'] for r in pareto_front(screened)],
-                period_label=((' ~ '.join([chosen[0]['start'],chosen[0]['end']])+' · 최근 36개월') if chosen else '최근 36개월 · 첫 실험 대기'), comparison='최근 36개월')
+                period_label=((' ~ '.join([chosen[0]['start'],chosen[0]['end']])+' · 최근 36개월') if chosen else '최근 36개월 · 첫 실험 대기'), comparison='최근 36개월',protocol=research.protocol(market))
 
 
 def selected_book(identity,phase):
@@ -76,8 +81,9 @@ def period_rows(case,months):
 
 
 @app.get('/api/strategy/{identity}')
-def detail(identity: str,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36),symbol:str=Query('',max_length=12)):
+def detail(identity: str,request:Request,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36),symbol:str=Query('',max_length=12)):
     summary,case=selected_book(identity,phase)
+    if not research.visible(summary,user(request)):raise HTTPException(404,'전략을 찾을 수 없습니다.')
     selected=period_rows(case,months)
     if not selected:raise HTTPException(409,'이 기간에 계좌 장부가 없습니다.')
     metrics=statistics_for(selected)
@@ -102,9 +108,10 @@ def detail(identity: str,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36
 
 
 @app.get('/api/strategy/{identity}/trades')
-def transactions(identity: str,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36),
+def transactions(identity: str,request:Request,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36),
                  symbol:str=Query('',max_length=12),offset:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
     summary,case=selected_book(identity,phase)
+    if not research.visible(summary,user(request)):raise HTTPException(404,'전략을 찾을 수 없습니다.')
     selected=period_rows(case,months)
     if not selected:return dict(total=0,trades=[])
     trades=[t for t in case['trades'] if selected[0]['date']<=normalized_date(t.get('date',''))<=selected[-1]['date']
@@ -114,7 +121,8 @@ def transactions(identity: str,phase:int=Query(0,ge=0),months:int=Query(36,ge=36
 
 
 @app.get('/api/status')
-def status():
+def status(request:Request):
+    admin_required(request)
     with connect() as db:
         counts=dict((r['status'],r['n']) for r in db.execute('SELECT status,count(*) n FROM jobs GROUP BY status'))
         coverage=dict((r['status'],r['n']) for r in db.execute('SELECT status,count(*) n FROM sources GROUP BY status'))
@@ -137,3 +145,8 @@ def status():
 
 from .controls import router as controls_router
 app.include_router(controls_router)
+
+from .market_routes import router as market_router
+from .crypto_view import router as crypto_router
+app.include_router(market_router)
+app.include_router(crypto_router)

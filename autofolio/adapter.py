@@ -215,6 +215,8 @@ def evaluate(g,destination,progress=lambda *_:None):
     from .period import window
     start, requested_end = window()
     expected=[d for d in index['dates'] if start<=d<=requested_end]
+    from .period import require_complete
+    require_complete(expected,'kr')
     if len({d[:6] for d in expected}) != 36 or expected[0] > start[:6]+'10':
         raise ValueError('최근 36개월 계좌 입력이 부족합니다.')
     end=expected[-1]

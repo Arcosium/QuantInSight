@@ -42,6 +42,9 @@ def storage_usage():
 
 def main():
     initialize()
+    from . import research
+    research.initialize()
+    with connect() as db:db.execute("UPDATE alpha_candidates SET status='queued',message='중단된 평가 재개 대기' WHERE status='running'")
     children={}
     last_refresh=time.time()
     importer=None
@@ -67,11 +70,12 @@ def main():
                 importer=subprocess.Popen([sys.executable,'-c','from autofolio.catalogue import refresh; print(refresh(),flush=True)'],
                                           cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
             last_refresh=now
+        market_running=research.tick(max(0,min(8,int(setting('concurrency',2)))-len(running)))
         # Model/result parity is an evidence gate, not an elapsed-time approval.
         if not setting('enabled',True) or not setting('baseline_verified'):
             time.sleep(10)
             continue
-        capacity=max(0,min(8,int(setting('concurrency',2)))-len(running))
+        capacity=max(0,min(8,int(setting('concurrency',2)))-len(running)-market_running)
         if capacity:
             import shutil
             usage=storage_usage()

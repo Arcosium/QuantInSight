@@ -1,0 +1,113 @@
+- generic [active] [ref=f1e1]:
+  - banner [ref=f1e2]:
+    - link "QuantInSight 전략 연구 · 계좌 운용" [ref=f1e3] [cursor=pointer]:
+      - /url: /
+      - text: QuantInSight
+      - generic [ref=f1e4]: 전략 연구 · 계좌 운용
+    - generic [ref=f1e5]: 연구 상태 확인 중
+  - navigation "시장" [ref=f1e8]:
+    - button "데이터셋" [ref=f1e9] [cursor=pointer]
+    - button "한국주식" [ref=f1e10] [cursor=pointer]
+    - button "미국주식" [ref=f1e11] [cursor=pointer]
+    - button "크립토" [ref=f1e12] [cursor=pointer]
+    - button "타임폴리오" [ref=f1e13] [cursor=pointer]
+    - button "계좌 연결" [ref=f1e14] [cursor=pointer]
+    - button "로그아웃" [ref=f1e15] [cursor=pointer]
+  - navigation "시장 메뉴" [ref=f1e16]:
+    - button "전략 연구" [ref=f1e17] [cursor=pointer]
+    - button "한투 (실매매)" [ref=f1e18] [cursor=pointer]
+    - button "한투 (모의매매)" [ref=f1e19] [cursor=pointer]
+  - main [ref=f1e20]:
+    - generic [ref=f1e21]:
+      - generic [ref=f1e22]:
+        - heading "전략 연구" [level=1] [ref=f1e23]
+        - generic [ref=f1e24]: 최근 36개월
+      - paragraph [ref=f1e25]: 학술제 · 차트 이미지·CNN 비교 · 성숙한 라벨만 학습 · 다음 거래일 시가 체결
+      - paragraph [ref=f1e26]: 평가 2023.10.01 ~ 2026.09.30 · 검증 원본 2022.05.02 ~ 2026.02.27 · 학술제 검증 원본 갱신 대기 · 최근 36개월을 채운 결과만 게시
+      - generic [ref=f1e27]:
+        - generic [ref=f1e28]:
+          - generic [ref=f1e29]: 현재 비교 전략
+          - strong [ref=f1e30]: 0 / 0
+        - generic [ref=f1e31]:
+          - generic [ref=f1e32]: 최고 순수익률
+          - strong [ref=f1e33]: 확인 전
+        - generic [ref=f1e34]:
+          - generic [ref=f1e35]: 파레토 전략
+          - strong [ref=f1e36]: 0개
+        - generic [ref=f1e37]:
+          - generic [ref=f1e38]: 자동 탐색
+          - strong [ref=f1e39]: …
+      - generic [ref=f1e40]:
+        - heading "실험 지도" [level=2] [ref=f1e42]
+        - generic [ref=f1e44]:
+          - text: 파레토 경계
+          - combobox "파레토 경계" [ref=f1e45]:
+            - option "회전율 통과 전략" [selected]
+            - option "전체 실험"
+      - generic [ref=f1e46]:
+        - paragraph [ref=f1e47]: 수익률 ↑ · 손실 개월 수 ↓
+        - generic [ref=f1e48]: 전체 실험 파레토 경계
+      - img "손실 개월 수와 순수익률의 파레토 그래프" [ref=f1e52]:
+        - generic [ref=f1e53]: 아직 표시할 계좌 장부가 없습니다.
+      - paragraph [ref=f1e54]: 최근 36개월 · 첫 실험 대기
+      - generic [ref=f1e55]:
+        - heading "전략 리더보드" [level=2] [ref=f1e57]
+        - generic [ref=f1e58]:
+          - generic [ref=f1e59]:
+            - text: 전략 검색
+            - searchbox "전략 검색" [ref=f1e60]
+          - generic [ref=f1e61]:
+            - text: 보기
+            - combobox "보기" [ref=f1e62]:
+              - option "전체 실험" [selected]
+              - option "파레토 전략"
+              - option "회전율 통과 전략"
+      - paragraph [ref=f1e63]: 0개 전략 · 페이지당 10개
+      - table [ref=f1e65]:
+        - rowgroup [ref=f1e66]:
+          - row [ref=f1e67]:
+            - columnheader "전략 / 모델" [ref=f1e68]
+            - columnheader [ref=f1e69]:
+              - button "순수익률 ↓" [ref=f1e70] [cursor=pointer]
+            - columnheader [ref=f1e71]:
+              - button "손실 개월" [ref=f1e72] [cursor=pointer]
+            - columnheader "샤프" [ref=f1e73]
+            - columnheader "비교 시작일" [ref=f1e74]
+            - columnheader "검증 상태" [ref=f1e75]
+        - rowgroup
+      - generic [ref=f1e76]:
+        - button "이전" [disabled] [ref=f1e77]
+        - generic [ref=f1e78]: 1 / 1
+        - button "다음" [disabled] [ref=f1e79]
+      - generic [ref=f1e80]:
+        - generic [ref=f1e81]:
+          - heading "진행 로그" [level=2] [ref=f1e82]
+          - generic [ref=f1e83]:
+            - generic [ref=f1e84]:
+              - checkbox "자동 스크롤" [checked] [ref=f1e85]
+              - text: 자동 스크롤
+            - button "화면 비우기" [ref=f1e86] [cursor=pointer]
+        - generic [ref=f1e87]:
+          - generic [ref=f1e88]:
+            - text: CPU (코어)
+            - spinbutton "CPU (코어)" [ref=f1e89]: "4"
+          - generic [ref=f1e90]:
+            - text: 메모리 (GiB)
+            - spinbutton "메모리 (GiB)" [ref=f1e91]: "8"
+          - generic [ref=f1e92]:
+            - text: 동시 실험
+            - spinbutton "동시 실험" [ref=f1e93]: "2"
+          - button "한도 적용" [ref=f1e94] [cursor=pointer]
+          - status
+        - generic [ref=f1e95]:
+          - generic [ref=f1e96]:
+            - text: 전략 입력
+            - textbox "전략 입력" [ref=f1e97]:
+              - /placeholder: 중심이 될 전략을 입력하세요
+          - button "로컬 AI로 알파 생성" [ref=f1e98] [cursor=pointer]
+          - status
+        - log "실험 진행 로그" [ref=f1e99]
+        - paragraph
+  - contentinfo [ref=f1e100]:
+    - generic [ref=f1e101]: QuantInSight
+    - generic [ref=f1e102]: 전략 연구 · 계좌 운용

@@ -1,0 +1,19 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - link "QuantInSight" [ref=e4] [cursor=pointer]:
+      - /url: /login
+    - heading "시장을 읽고, 전략을 검증하다." [level=1] [ref=e5]: 시장을 읽고,전략을 검증하다.
+    - paragraph [ref=e6]: 한국주식 · 미국주식 · 크립토
+  - region [ref=e7]:
+    - group "계정" [ref=e8]:
+      - button "로그인" [pressed] [ref=e9] [cursor=pointer]
+      - button "회원가입" [ref=e10] [cursor=pointer]
+    - heading "연구실에 입장하기" [level=2] [ref=e11]
+    - generic [ref=e12]:
+      - generic [ref=e13]: 아이디
+      - textbox "아이디" [ref=e14]
+      - generic [ref=e15]: 비밀번호
+      - textbox "비밀번호" [ref=e16]
+      - paragraph [ref=e17]: 등록된 계정으로 로그인하세요.
+      - button "로그인" [ref=e18] [cursor=pointer]
+      - status [ref=e19]

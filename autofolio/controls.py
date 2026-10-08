@@ -34,6 +34,8 @@ class Resources(BaseModel):
 @router.post('/api/resources')
 def resources(value: Resources, request: Request):
     mutation_guard(request)
+    from .auth import admin_required
+    admin_required(request)
     physical = os.cpu_count() or 1
     total = int(next(l.split()[1] for l in Path('/proc/meminfo').read_text().splitlines() if l.startswith('MemTotal:'))) / 2**20
     if value.cpu_cores > physical or value.memory_gb > total * .8:
@@ -53,7 +55,9 @@ def resources(value: Resources, request: Request):
 
 
 @router.get('/api/logs')
-def logs(after: int = Query(0, ge=0)):
+def logs(request:Request,after: int = Query(0, ge=0)):
+    from .auth import admin_required
+    admin_required(request)
     with connect() as db:
         found = db.execute('SELECT id,timestamp,kind,body FROM events WHERE id>? ORDER BY id LIMIT 300', (after,)).fetchall()
     names = {'job_started':'실험 시작', 'worker_started':'탐색 시작', 'catalogue_refresh':'결과 갱신',
@@ -72,96 +76,73 @@ def logs(after: int = Query(0, ge=0)):
 
 class Seed(BaseModel):
     strategy: str = Field(min_length=3, max_length=4000)
+    market: str = Field(default='kr',pattern='^(kr|us|crypto|timefolio)$')
 
 
 @router.post('/api/seed')
 def seed(value: Seed, request: Request):
     mutation_guard(request)
-    prompt = ('사용자가 입력한 전략을 중심으로 계좌 전략 후보 5개를 설계하세요. '
-              '아래 유전자 도메인 밖 조건은 구현할 수 없으므로 unsupported에 적으세요. '
-              '모든 유전자를 포함한 JSON {"genomes":[...],"unsupported":[]}만 출력하세요. '
-              '평가 기간은 최근 36개월로 고정입니다. '+json.dumps(DOMAINS,ensure_ascii=False))
-    payload = dict(model=os.environ.get('AUTOFOLIO_LOCAL_MODEL','arc-local'),
-        messages=[dict(role='system',content=prompt),dict(role='user',content=value.strategy)],
-        stream=False, max_tokens=3000, chat_template_kwargs=dict(enable_thinking=False), response_format=dict(type='json_object'))
-    req = urllib.request.Request('http://127.0.0.1:11434/v1/chat/completions',
-        data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
+    from .auth import user,get_credentials,throttle
+    from . import providers,research
+    person=user(request)
+    throttle(request,'seed:'+str(person['id']))
+    credential=get_credentials(person['id']) if person['role']!='admin' else None
+    if person['role']!='admin' and not credential:raise HTTPException(422,'먼저 API Key와 모델 ID를 저장해 주세요.')
+    provider=credential['provider'] if credential else 'local'
+    prompt=('입력 전략을 중심으로 서로 다른 후보 최대 5개를 설계하세요. 지원 범위 밖은 unsupported에 쓰세요. '
+            'JSON {"genomes":[...],"unsupported":[]}만 출력하세요. 시장 '+value.market+
+            ', 최근 36개월 고정, 미래 데이터 사용 금지. 모든 필수 유전자와 허용값: '+json.dumps(research.domains(value.market),ensure_ascii=False))
+    prompt+=' 반환 예시: '+json.dumps({'genomes':[{k:v[0] for k,v in research.domains(value.market).items()}],'unsupported':[]},ensure_ascii=False)+' genomes 원소는 객체이며 중첩 배열을 사용하지 마세요.'
+    result=providers.generate(provider,credential['api_key'] if credential else '',credential['model'] if credential else os.environ.get('AUTOFOLIO_LOCAL_MODEL','arc-local'),prompt,value.strategy)
     try:
-        with urllib.request.urlopen(req,timeout=180) as response: result=json.load(response)
-        content=result['choices'][0]['message']['content'].strip()
-        if content.startswith('```') and content.endswith('```'):
-            content=content.split('\n',1)[1].rsplit('```',1)[0].strip()
-        parsed=json.loads(content)
-        if parsed.get('unsupported'):
-            raise HTTPException(422,'현재 탐색기가 지원하지 않는 조건: '+', '.join(map(str,parsed['unsupported'])))
-        genomes=[normalize(g) for g in parsed['genomes'][:5]]
-        if not genomes: raise ValueError('No genomes')
-    except HTTPException: raise
-    except Exception:
-        raise HTTPException(503,'로컬 AI가 유효한 전략을 생성하지 못했습니다. 전략 조건을 바꿔 다시 시도해 주세요.')
-    count=0
-    with connect() as db:
-        for g in genomes:
-            count+=db.execute("INSERT OR IGNORE INTO jobs(id,genome,model_id,generation,parents,operator,status,created) VALUES (?,?,?,?,?,?,'queued',?)",
-                (fingerprint(g),json.dumps(g),model_fingerprint(g,'pending'),int(setting('generation',0))+1,'[]','local_ai',time.time())).rowcount
-    set_setting('seed_genomes',genomes)
-    event('seed_generated',dict(count=count,provider='local'))
-    return dict(count=count)
+        if result.get('unsupported'):raise HTTPException(422,'지원하지 않는 조건: '+', '.join(map(str,result['unsupported']))[:500])
+        raw=result['genomes']
+        if isinstance(raw,list) and len(raw)==1 and isinstance(raw[0],list):raw=raw[0]
+        genomes=[research.normalize(g,value.market) for g in raw[:5]]
+        if not genomes:raise ValueError()
+    except (KeyError,ValueError,TypeError):raise HTTPException(422,'AI가 지원 범위에 맞는 전략을 반환하지 않았습니다.')
+    ids=research.save_candidates(person['id'],value.market,genomes,provider)
+    if value.market=='timefolio' and person['role']=='admin':
+        with connect() as db:
+            for g in genomes:
+                db.execute("INSERT OR IGNORE INTO jobs(id,genome,model_id,generation,parents,operator,status,created) VALUES (?,?,?,?,?,?,'queued',?)",
+                    (fingerprint(g),json.dumps(g),model_fingerprint(g,'pending'),int(setting('generation',0))+1,'[]',provider,time.time()))
+        set_setting('seed_genomes',genomes)
+    return dict(count=len(ids),ids=ids,message=research.protocol(value.market)['message'])
 
 
 @router.get('/api/datasets')
 def datasets():
-    vault=HOME/'vault'
-    definitions=[
-        ('한국 분봉','KRX · 1분 OHLCV',vault/'CryptoBars/data/KRX/bars_ohlc.db'),
-        ('한국 시세','KRX · 분봉과 거래일',vault/'CryptoBars/data/KRX/bars.db'),
-        ('미국 분봉','미국 주식 · 1분 OHLCV',vault/'CryptoBars/data/USA/1m'),
-        ('크립토 분봉','거래소별 1분 OHLCV',vault/'CryptoBars/data/bars'),
-        ('크립토 과거 분봉','종목별 과거 1분 OHLCV',vault/'CryptoBars/data/history'),
-        ('NXT 분봉','넥스트레이드 · 1분 OHLCV',vault/'CryptoBars/data/NXT/bars.db'),
-        ('한국 장기 분봉','토스 · 과거 1분 OHLCV',vault/'CryptoBars/data/KRX/bars_toss.db'),
-        ('미국 일봉 정책','상장 이력 · 종목 변경',vault/'CryptoBars/data/USA/daily_policy'),
-        ('뉴스','증권 뉴스 · RSS',HOME/'projects/lib/data/arcnews.db'),
-        ('공시·재무','DART · 기업 재무',ROOT/'integrations/timefolio/quant/financials_5y.csv'),
-        ('한국 일봉','수정 주가 · 거래량',vault/'QuantInSight/data'),
-        ('연구 입력','확정 계좌 패널 · 학습 입력',vault/'ArcTrade/timefolio_cnn_4y/20261002_v1/context_full_w20_h5_v1/dataset'),
-        ('시장 분석','종목·수급 분석 자료',vault/'HYFE/9.28/market_data/analysis-20260928-revision-03'),
-    ]
-    result=[]
-    for name,description,path in definitions:
-        available=path.exists()
-        result.append(dict(name=name,description=description,available=available,
-                           updated=path.stat().st_mtime if available else None))
-    return dict(datasets=result)
+    from .datasets import datasets as catalogue
+    return catalogue()
 
+
+_ACCOUNT_CACHE={}
 
 @router.get('/api/accounts/{mode}')
-def account(mode: str):
+def account(mode: str,request:Request):
+    from .auth import user,get_connection
+    import sys
+    person=user(request)
     if mode not in ['timefolio','kis-live','kis-paper']:raise HTTPException(404)
-    result=dict(connected=False,equity=[],message='계좌 연결 확인 필요',total_eval=None,cash=None,pnl_ratio=None,holdings=[],trades=[])
-    if mode=='timefolio':
-        try:
-            with urllib.request.urlopen('http://127.0.0.1:8620/api/autofolio/summary',timeout=8) as r: source=json.load(r)
-            portfolio=(source.get('account') or {}).get('portfolio') or {}
-            result.update(connected=False,message='저장 장부 · 사이트 연결 미확인',total_eval=portfolio.get('total_eval'),cash=portfolio.get('cash'),pnl_ratio=(portfolio['unrealized_pnl_pct']/100 if portfolio.get('unrealized_pnl_pct') is not None else None))
-            for p in portfolio.get('positions',[]):
-                result['holdings'].append(dict(code=p.get('ticker') or p.get('code'),name=p.get('name'),qty=p.get('qty',0),value=p.get('value'),pnl_ratio=(p['pnl_pct']/100 if p.get('pnl_pct') is not None else None)))
-            with urllib.request.urlopen('http://127.0.0.1:8620/api/autofolio/trades?limit=50',timeout=8) as r: trades=json.load(r)
-            with urllib.request.urlopen('http://127.0.0.1:8620/api/autofolio/equity',timeout=8) as r: eq=json.load(r)
-            base=eq.get('initial_cash')
-            if base and base>0:
-                result['equity']=[dict(date=p['ts_kst'][:10].replace('-',''),net_return=p['total_eval']/base-1) for p in eq.get('equity',[]) if p.get('total_eval') is not None]
-                result['pnl_ratio']=(source.get('performance') or {}).get('eq_all_pct')
-                if result['pnl_ratio'] is not None:result['pnl_ratio']/=100
-            result['trades']=[dict(date=t.get('date') or t.get('timestamp') or t.get('ts'),code=t.get('ticker'),name=t.get('name'),side=t.get('side'),qty=t.get('qty'),price=t.get('price')) for t in trades.get('trades',[])]
-        except (OSError,ValueError,TypeError):result.update(message='계좌 조회 실패',connected=False)
-    else:
-        import sys
-        kis=ROOT/'integrations/kis'
-        if not kis.exists():kis=HOME/'projects/QuantInSight'
-        try:
-            process=subprocess.run([sys.executable,str(ROOT/'autofolio/account_bridge.py'),str(kis),mode],
-                                   cwd=kis,capture_output=True,text=True,timeout=90,check=True)
-            result.update(json.loads(process.stdout))
-        except (subprocess.SubprocessError,OSError,ValueError):result['message']='계좌 조회 실패'
+    result=dict(connected=False,equity=[],message='계좌 연결 정보를 등록해 주세요.',total_eval=None,cash=None,pnl_ratio=None,holdings=[],trades=[])
+    credential=get_connection(person['id'],mode)
+    if not credential and (person['role']!='admin' or mode=='timefolio'):return result
+    import hashlib
+    key=(person['id'],mode,hashlib.sha256(json.dumps(credential,sort_keys=True).encode()).hexdigest())
+    cached=_ACCOUNT_CACHE.get(key)
+    if cached and time.time()-cached[0]<60:return cached[1]
+    try:
+        if mode=='timefolio':
+            command=[sys.executable,str(ROOT/'autofolio/timefolio_bridge.py')]
+            payload=credential
+        else:
+            command=[sys.executable,str(ROOT/'autofolio/account_bridge.py'),str(ROOT),mode]
+            payload=dict(user_id=person['id'],credentials=credential) if credential else None
+            if payload:command.append('--member')
+        process=subprocess.run(command,input=json.dumps(payload),cwd=ROOT,capture_output=True,text=True,timeout=100,check=True)
+        result.update(json.loads(process.stdout))
+        result['updated']=time.time()
+    except (subprocess.SubprocessError,OSError,ValueError):result['message']='계좌 조회 실패'
+    _ACCOUNT_CACHE[key]=(time.time(),result)
     return result
