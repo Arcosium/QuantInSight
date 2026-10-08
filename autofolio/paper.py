@@ -45,9 +45,12 @@ def advance(dep):
     folder=Path(dep['artifact']).parent;recipe=json.loads((folder/'recipe.json').read_text());verify(recipe)
     proof=json.loads((folder/'deployment.json').read_text())
     if file_hash(dep['artifact'])!=proof['model_sha256']:raise ValueError('운용 가중치 해시 변경')
-    artifact=joblib.load(dep['artifact']);g=recipe['definition']
     from .model_recipe import saved_learner
-    features=saved_learner(recipe).features
+    learner=saved_learner(recipe)
+    features=learner.features
+    from . import execution as current_execution
+    execution=getattr(learner,'_EXECUTION_MODULE',None) or current_execution
+    artifact=joblib.load(dep['artifact']);g=recipe['definition']
     base=pq.ParquetFile(recipe['input']['path']).read(use_threads=False).to_pandas()
     local=datetime.now(ZoneInfo('UTC' if market=='crypto' else 'Asia/Seoul' if market=='kr' else 'America/New_York'))
     if market=='crypto':
@@ -69,38 +72,59 @@ def advance(dep):
     cutoff=pd.Timestamp(local.date())
     if market=='crypto' or local.hour<(16 if market=='kr' else 17):cutoff-=pd.Timedelta(days=1)
     prices=prices[prices.date<=cutoff];p,names=features(prices,g,market)
-    latest=p.date.max();day=latest.strftime('%Y%m%d');quotes=p[p.date.eq(latest)].set_index('symbol')
+    if p.empty:return
+    latest=p.date.max();day=latest.strftime('%Y%m%d')
     with connect() as db:r=db.execute('SELECT body,deployment FROM paper_books WHERE user_id=? AND market=?',(dep['user_id'],market)).fetchone()
     book=json.loads(r['body']) if r else dict(not_before=local.strftime('%Y%m%d'),initial=1e8 if market=='kr' else 1e5,cash=1e8 if market=='kr' else 1e5,nav=1e8 if market=='kr' else 1e5,holdings={},trades=[],equity=[],last_day='',pending=[],rebalance=0)
     if book['last_day']>=day:return
-    import math
-    cost=.002 if market=='kr' else .001
-    if r and r['deployment']==dep['id'] and book['pending'] and book['last_day']<day and day>book.get('not_before',day):
-        for symbol,h in list(book['holdings'].items()):
-            if symbol not in quotes.index or not quotes.loc[symbol,'tradable_sell']:continue
-            px=float(quotes.loc[symbol,'open']);qty=h['qty'];fee=px*qty*cost;book['cash']+=px*qty-fee
-            book['trades'].append(dict(date=day,code=symbol,side='sell',qty=qty,price=px,fee=fee));del book['holdings'][symbol]
-        for pick in book['pending']:
-            symbol=pick['symbol']
-            if symbol not in quotes.index or symbol in book['holdings'] or not quotes.loc[symbol,'tradable_buy']:continue
-            px=float(quotes.loc[symbol,'open']);budget=min(book['cash']/(1+cost),book['nav']*min(.1,1/g['selection_count']),pick['adv20']*.01);qty=budget/px if market=='crypto' else math.floor(budget/px)
-            if qty<=0:continue
-            fee=px*qty*cost;book['cash']-=px*qty+fee;book['holdings'][symbol]=dict(code=symbol,name=symbol,qty=qty,entry=px,value=qty*px,pnl_ratio=0)
-            book['trades'].append(dict(date=day,code=symbol,side='buy',qty=qty,price=px,fee=fee))
-        book['pending']=[];book['rebalance']=g['holding_sessions']
-    for symbol,h in book['holdings'].items():
-        if symbol in quotes.index:
-            px=float(quotes.loc[symbol,'close']);h.update(value=px*h['qty'],pnl_ratio=px/h['entry']-1)
-    book['nav']=book['cash']+sum(h['value'] for h in book['holdings'].values())
-    test=quotes[quotes.ready].copy()
-    if len(test) and (not r or r['deployment']!=dep['id'] or book['rebalance']<=1):
-        test['score']=artifact['model'].predict(test[names].to_numpy())
-        book['pending']=[dict(symbol=s,adv20=float(row.adv20)) for s,row in test.sort_values('score',ascending=False).head(g['selection_count']).iterrows()]
-    book['rebalance']=max(0,book['rebalance']-1);book['last_day']=day
-    book['equity'].append(dict(date=day,net_return=book['nav']/book['initial']-1))
+    same_deployment=bool(r and r['deployment']==dep['id'])
+    if not same_deployment:
+        book['not_before']=local.strftime('%Y%m%d');book['pending']=[];book['rebalance']=0
+    if same_deployment:
+        # Catch up each newly observed session, never jump an old signal to the latest open.
+        observed=sorted(p.loc[(p.date.dt.strftime('%Y%m%d')>book['last_day']) &
+            (p.date.dt.strftime('%Y%m%d')>=book.get('not_before',day)),'date'].unique())
+        if not observed:observed=[latest]
+    else:observed=[latest]
+    for stamp in observed:
+        stamp=pd.Timestamp(stamp);day=stamp.strftime('%Y%m%d')
+        quotes=p[p.date.eq(stamp)].set_index('symbol')
+        step_book(book,quotes,g,artifact['model'],names,market,day,same_deployment,execution)
     book['message']='자체 페이퍼 운용 · 일봉 확정 후 다음 시가 체결 모의 · 증권사 주문 없음'
     initialize()
     with connect() as db:db.execute('INSERT INTO paper_books VALUES(?,?,?,?,?) ON CONFLICT(user_id,market) DO UPDATE SET deployment=excluded.deployment,body=excluded.body,updated=excluded.updated',(dep['user_id'],market,dep['id'],json.dumps(book,ensure_ascii=False),time.time()))
+
+
+def step_book(book,quotes,g,model,names,market,day,same_deployment,execution):
+    """Advance one completed session using the exact research execution policy."""
+    hold={symbol:h['qty'] for symbol,h in book['holdings'].items()}
+    marks={symbol:h['value']/h['qty'] for symbol,h in book['holdings'].items()}
+    entries={symbol:h['entry'] for symbol,h in book['holdings'].items()}
+    unfilled=[]
+    if same_deployment and book['pending'] and book['last_day']<day and day>book.get('not_before',day):
+        pending=book['pending']
+        book['cash'],trades,unfilled=execution.fill_orders(book['cash'],hold,marks,entries,quotes,pending,g,market,day)
+        book['trades'].extend(trades)
+        if isinstance(pending,list) or pending.get('rebalance'):
+            book['rebalance']=execution.policy(g)['rebalance_sessions']
+        book['pending']=[]
+    import math
+    for symbol in hold:
+        if symbol in quotes.index:
+            px=float(quotes.loc[symbol,'close'])
+            if math.isfinite(px) and px>0:marks[symbol]=px
+    book['holdings']={symbol:dict(code=symbol,name=symbol,qty=qty,entry=entries[symbol],
+        value=qty*marks[symbol],pnl_ratio=marks[symbol]/entries[symbol]-1) for symbol,qty in hold.items()}
+    book['nav']=book['cash']+sum(h['value'] for h in book['holdings'].values())
+    rebalance=not same_deployment or book['rebalance']<=1
+    test=quotes[quotes.ready].copy();records=[]
+    if len(test) and rebalance:
+        test['score']=model.predict(test[names].to_numpy())
+        records=test.reset_index().to_dict('records')
+    book['pending']=execution.build_plan(records,g,hold,marks,entries,rebalance)
+    book['pending']['sells']=list(dict.fromkeys(unfilled+book['pending']['sells']))
+    book['rebalance']=max(0,book['rebalance']-1);book['last_day']=day
+    book['equity'].append(dict(date=day,net_return=book['nav']/book['initial']-1))
 
 
 def crypto_prices(base,now):

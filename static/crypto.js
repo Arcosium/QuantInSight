@@ -13,7 +13,7 @@ const cryptoPaper=(()=>{
   for(const row of rows){const tr=el('tr');for(const value of columns(row)){const td=el('td');if(value instanceof Node)td.append(value);else td.textContent=String(value??'미확인');tr.append(td);}body.append(tr);}
   if(!rows.length){const tr=el('tr'),td=el('td',empty);td.colSpan=8;tr.append(td);body.append(tr);}
  }
- function symbolButton(symbol,side){const b=el('button',symbol,'crypto-symbol');b.type='button';b.setAttribute('aria-label',symbol+' 시세 보기');b.onclick=()=>{c.symbol=symbol;c.side=side;chart().catch(fail);};return b;}
+ function symbolButton(symbol){return el('span',symbol);}
  function fail(e){if(active()){$('worker-status').textContent='모의매매 · 연결 확인 필요';$('lamp').classList.remove('active');}$('crypto-error').hidden=false;$('crypto-error').textContent=e.message||'크립토 자료를 불러오지 못했습니다.';}
  function blank(id,message){const svg=$(id);svg.replaceChildren(node('text',{x:18,y:65},message));svg.setAttribute('viewBox','0 0 600 180');}
  function metrics(){const b=c.book;$('crypto-metrics').replaceChildren();for(const [label,value] of [['평가 순자산 (USD)',usd(b.mtm_usd)],['계좌 수익률',pct(b.upnl_pct_book)],['롱 / 숏',`${b.long??0} / ${b.short??0}`],['마감 순자산 (USD)',usd(b.equity_usd)]]){const item=el('div');item.append(el('span',label),el('strong',value));$('crypto-metrics').append(item);}
@@ -37,39 +37,23 @@ const cryptoPaper=(()=>{
   $('crypto-trade-note').textContent=closed?`원본 장부에서 제공하는 최근 ${rows.length}건 · 전체 청산 ${b.n_trades??0}건`:b.history_note||'운영 장부의 진입 기록';
   $('crypto-trade-page').textContent=`${c.tradePage+1} / ${pages} · ${total}건`;$('crypto-trade-prev').disabled=!c.tradePage;$('crypto-trade-next').disabled=c.tradePage>=pages-1;
  }
- function signals(){const s=c.book.last_signal||{},a=s.top||[],b=s.bottom||[];$('crypto-signal-time').textContent=s.ts?time(s.ts):'신호 없음';table('crypto-signals',Array.from({length:Math.max(a.length,b.length)},(_,i)=>i),i=>[a[i]?symbolButton(a[i][0],'long'):'',num(a[i]?.[1]),b[i]?symbolButton(b[i][0],'short'):'',num(b[i]?.[1])]);}
- function summary(){const s=c.summary;if(!s)return;table('crypto-compare',s.books||[],b=>[b.label,usd(b.equity_usd),pct(b.settled_return_pct??(Number.isFinite(b.equity)?(b.equity-1)*100:null)),num(b.research_sharpe)]);
-  const r=s.research||{};$('crypto-research-note').textContent=`과거 논문 연구 · ${r.window||'기간 미기록'} · ${r.rule||''}. 합산 Sharpe ${r.pooled??'미확인'}, 홀드아웃 Sharpe ${r.holdout??'미확인'}, 펀딩 반영 Sharpe ${r.funding??'미확인'}. 현재 모의매매 성과와 구분합니다.`;
-  $('crypto-alarm-count').textContent=`최근 24시간 · 급등 ${s.alarms_24h?.up??0} · 급락 ${s.alarms_24h?.dn??0}`;
- }
- async function chart(){const seq=++c.chartSeq,symbol=c.symbol,tf=$('crypto-timeframe').value;$('crypto-symbol-title').textContent=symbol+' · USDT';$('crypto-quote').textContent='시세 조회 중';const d=await get(`/crypto/api/candles/${encodeURIComponent(symbol)}?tf=${tf}&n=80`);if(seq!==c.chartSeq||!active())return;c.candles=d;const q=d.quote||{},pos=c.book?.positions?.find(p=>p.base===symbol&&(!c.side||p.side===c.side));$('crypto-quote').textContent=[`현재가 ${num(q.last)}`,`24시간 ${pct(q.chg24)}`,`고가 ${num(q.high24)}`,`저가 ${num(q.low24)}`,pos?`${direction(pos.side)} 진입 ${num(pos.entry)} · 예정 청산 ${time(pos.exit_ts)}`:''].filter(Boolean).join(' · ');candles();}
- function candles(){const rows=(c.candles?.candles||[]).filter(r=>[r.o,r.h,r.l,r.c,r.v].every(Number.isFinite));if(!rows.length){blank('crypto-candles','시세 기록 없음');return;}
-  const svg=$('crypto-candles'),w=Math.max(300,svg.clientWidth),h=310,L=57,R=12,T=24,B=40,V=45;svg.replaceChildren();svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
-  let lo=Math.min(...rows.map(r=>r.l)),hi=Math.max(...rows.map(r=>r.h));const pad=(hi-lo)*.06||1;lo-=pad;hi+=pad;const x=i=>L+(i+.5)*(w-L-R)/rows.length,y=v=>T+(hi-v)/(hi-lo)*(h-T-B-V),cw=Math.max(1,(w-L-R)/rows.length*.65),vmax=Math.max(...rows.map(r=>r.v),1);
-  for(let i=0;i<4;i++){const v=lo+(hi-lo)*i/3;svg.append(node('line',{x1:L,x2:w-R,y1:y(v),y2:y(v),class:'grid'}),node('text',{x:L-7,y:y(v)+4,'text-anchor':'end'},Number(v.toPrecision(4)).toString()));}
-  rows.forEach((r,i)=>{const color=r.c>=r.o?'#d8ba7d':'#989e94';svg.append(node('line',{x1:x(i),x2:x(i),y1:y(r.h),y2:y(r.l),stroke:color}),node('rect',{x:x(i)-cw/2,y:Math.min(y(r.o),y(r.c)),width:cw,height:Math.max(1,Math.abs(y(r.o)-y(r.c))),fill:color}),node('rect',{x:x(i)-cw/2,y:h-B-r.v/vmax*V,width:cw,height:r.v/vmax*V,fill:color,opacity:.4}));});
-  svg.append(node('text',{x:L,y:h-8},time(rows[0].t).slice(0,14)),node('text',{x:w-R,y:h-8,'text-anchor':'end'},time(rows.at(-1).t).slice(0,14)));
- }
- async function load(){const seq=++c.seq;c.busy=true;const model=$('crypto-model').value,changed=model!==c.model;c.model=model;if(changed){c.chartSeq++;c.candles=null;blank('crypto-candles','시세 조회 중');c.book=null;c.posPage=0;c.tradePage=0;c.symbol='BTC';c.side=null;$('crypto-metrics').replaceChildren();for(const id of ['crypto-positions','crypto-trades','crypto-signals'])$(id).replaceChildren();blank('crypto-equity','장부 조회 중');}
+ async function load(){const seq=++c.seq;c.busy=true;const model=$('crypto-model').value,changed=model!==c.model;c.model=model;if(changed){c.book=null;c.posPage=0;c.tradePage=0;c.symbol='BTC';c.side=null;$('crypto-metrics').replaceChildren();for(const id of ['crypto-positions','crypto-trades'])$(id).replaceChildren();blank('crypto-equity','장부 조회 중');}
   $('crypto-error').hidden=true;$('crypto-status').textContent='장부 조회 중';
   try{const offset=$('crypto-history-kind').value==='fills'?c.tradePage*10:0;
-   const result=await Promise.allSettled([get(`/crypto/api/book/${model}?history_offset=${offset}&history_limit=10`),get('/crypto/api/summary'),get('/crypto/api/alarms?limit=20'),get('/crypto/api/log?limit=40')]);
+   const result=await Promise.allSettled([get(`/crypto/api/book/${model}?history_offset=${offset}&history_limit=10`),get('/crypto/api/summary'),get('/crypto/api/log?limit=40')]);
    if(seq!==c.seq||!active())return;
    if(result[0].status!=='fulfilled')throw result[0].reason;
    c.book=result[0].value;c.summary=result[1].status==='fulfilled'?result[1].value:null;
-   metrics();equity();positions();history();signals();summary();
-   if(result[2].status==='fulfilled')table('crypto-alarms',result[2].value.alarms||[],p=>[time(p.ts),symbolButton(p.base),p.kind==='up'?'급등':'급락',num(p.p_up),num(p.p_dn)]);
-   else table('crypto-alarms',[],()=>[],'알림 조회 실패');
-   $('crypto-log').textContent=result[3].status==='fulfilled'?result[3].value.lines.join('\n'):'로그 조회 실패';
-   await chart();
+   metrics();equity();positions();history();
+   $('crypto-log').value=result[2].status==='fulfilled'?result[2].value.lines.join('\n'):'로그 조회 실패';
   }catch(e){if(seq===c.seq){$('crypto-status').textContent='조회 실패 · 새로고침해 주세요';fail(e);}}
   finally{if(seq===c.seq)c.busy=false;}
  }
  $('crypto-model').onchange=()=>load();$('crypto-refresh').onclick=()=>load();
  $('crypto-search').oninput=()=>{c.posPage=0;positions();};$('crypto-sort').onchange=()=>{c.posPage=0;positions();};
  $('crypto-pos-prev').onclick=()=>{c.posPage--;positions();};$('crypto-pos-next').onclick=()=>{c.posPage++;positions();};
- $('crypto-timeframe').onchange=()=>chart().catch(fail);$('crypto-history-kind').onchange=()=>{c.tradePage=0;load();};
+ $('crypto-history-kind').onchange=()=>{c.tradePage=0;load();};
  for(const [id,delta] of [['crypto-trade-prev',-1],['crypto-trade-next',1]])$(id).onclick=()=>{c.tradePage+=delta;if($('crypto-history-kind').value==='trades')history();else load();};
  setInterval(()=>{if(active()&&!c.busy)load();},30000);
- return {load,resize:()=>{equity();candles();}};
+ return {load,resize:()=>{equity();}};
 })();

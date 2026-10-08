@@ -8,3 +8,4 @@ pandas
 pyarrow
 scikit-learn
 playwright
+torch

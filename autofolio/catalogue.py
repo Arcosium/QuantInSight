@@ -11,7 +11,7 @@ from .config import REPORT_ROOTS
 from .metrics import evaluation_scope, ledger, normalized_date, statistics_for
 from .store import connect, event, setting, set_setting
 
-INDEX_VERSION=9
+INDEX_VERSION=10
 
 
 def sha(path):
@@ -110,19 +110,25 @@ def ingest_file(path,stat):
     except (ValueError,OSError):return 'incomplete',0
     nodes=list(book_nodes(report))
     if not nodes:return 'no_book',0
+    from .period import window, using_window, require_complete, accepts
+    from .evaluation import performance, segment_metrics, valid_window, PROTOCOL
+    span=report.get("evaluation_window") or [report.get("recipe",{}).get("evaluation_start"),report.get("recipe",{}).get("evaluation_end")]
+    if not all(span):span=window()
+    if not valid_window(span):return "unmatched",0
     groups={}
     for pointer,case in nodes:
         codes=[str(t.get('code',t.get('ticker',''))) for t in case['trades'][:20]]
         if report.get('market','timefolio') in ('kr','timefolio') and codes and not any(c.isdigit() and len(c)==6 for c in codes):continue
         try:
-            start,end,recorded=evaluation_scope(case)
-            rows=ledger(case,start,end)
-            metrics=statistics_for(rows)
-            from .period import accepts
+            _,_,recorded=evaluation_scope(case)
+            rows=ledger(case,*span)
+            metrics=segment_metrics(rows,*span,36)
+            if metrics is None:continue
             metrics['market']=report.get('market','timefolio')
-            from .period import require_complete
-            require_complete([r['date'] for r in rows],metrics['market'])
-            if not accepts(metrics):continue
+            with using_window(*span):
+                require_complete([r['date'] for r in rows],metrics['market'])
+                if not accepts(metrics):continue
+            split=performance(rows,*span)
             if recorded and isinstance(recorded.get('pooled'),dict):
                 stored=recorded['pooled'].get('net_return')
                 if isinstance(stored,(int,float)) and abs(stored-metrics['net_return'])>1e-6:
@@ -136,7 +142,7 @@ def ingest_file(path,stat):
                 if isinstance(account_metrics,dict) and isinstance(account_metrics.get('four_week_turnover_stop'),bool):
                     turnover_pass=not account_metrics['four_week_turnover_stop']
             groups.setdefault((key,cohort),[]).append(dict(pointer=list(pointer),phase=case.get('phase',case.get('offset_sessions',len(groups))),
-                metrics=metrics,trade_count=sum(metrics['start']<=normalized_date(t.get('date',''))<=metrics['end'] for t in case['trades']),
+                metrics=metrics,performance=split,trade_count=sum(metrics['start']<=normalized_date(t.get('date',''))<=metrics['end'] for t in case['trades']),
                 turnover_pass=turnover_pass,warm_start=normalized_date(case['daily'][0]['date'])))
         except (ValueError,TypeError,KeyError,ZeroDivisionError):continue
     count=0
@@ -148,6 +154,14 @@ def ingest_file(path,stat):
             means={k:statistics.mean(c['metrics'][k] for c in cases) for k in ['net_return','negative_months','mdd','mean_loss_month','worst_month']}
             sharpes=[c['metrics']['sharpe'] for c in cases if c['metrics']['sharpe'] is not None]
             first=cases[0]['metrics']
+            splits={}
+            for phase in ('is','os','ros'):
+                parts=[c['performance'][phase] for c in cases]
+                if any(p is None for p in parts):break
+                splits[phase]=dict(parts[0])
+                for field in ('net_return','negative_months','mdd','mean_loss_month','worst_month','sharpe'):
+                    values=[p[field] for p in parts if p[field] is not None]
+                    splits[phase][field]=statistics.mean(values) if values else None
             genome=(report.get('genome') or report.get('definition')) if isinstance(report,dict) else None
             payload=dict(id=identity,title=report.get('title') or (genome_title(genome) if genome else title_for(path,key)),family=report.get('family') or family_for(path,report),cohort=cohort,market=report.get('market','timefolio'),owner_id=report.get('owner_id'),
                 **means,sharpe=statistics.mean(sharpes) if sharpes else None,months=first['months'],start=first['start'],end=first['end'],
@@ -157,6 +171,9 @@ def ingest_file(path,stat):
                 rule_screen_known=all(c['turnover_pass'] is not None for c in cases),
                 independent_holdout=bool(report.get('independent_holdout',False)) if isinstance(report,dict) else False,
                 contest_certified=bool(report.get('contest_certified',False)) if isinstance(report,dict) else False,
+                evaluation_protocol=PROTOCOL,evaluation_window=list(span),performance=splits,
+                selection_scope='os',training_summary=report.get('training_summary'),
+                protocol_origin='native' if report.get('evaluation_protocol')==PROTOCOL else 'retrospective',
                 cases=cases,source_digest=source_digest,source_name=path.parent.name+'/'+path.name,
                 limitations=report.get('limitations') or ['과거 개발 표본 재사용','여러 시작일은 독립 폴드가 아닌 민감도 비교','종목·섹터·체결 자료의 근사치 및 현금 배당 미정산'],
                 genome=(report.get('genome') or report.get('definition')) if isinstance(report,dict) else None)

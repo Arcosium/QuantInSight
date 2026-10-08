@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from .config import HOME, RUNS
-from .period import expected_dates, window
+from .period import expected_dates, window, using_window, last_complete_date
 
 VERSION = 1
 MIN_SYMBOLS = 20
@@ -114,6 +114,11 @@ def fingerprint(path):
 
 
 def prepare(market):
+    with using_window(*window()):
+        return _prepare(market)
+
+
+def _prepare(market):
     import numpy as np
     import pandas as pd
     import pyarrow.parquet as pq
@@ -121,6 +126,7 @@ def prepare(market):
     snapshot, audit_path = paths(market)
     if status(market)['ready']:
         return pq.ParquetFile(snapshot).read(use_threads=False).to_pandas()
+    cutoff=min(pd.Timestamp(window()[1]),pd.Timestamp(last_complete_date(market)))
     files = sorted(ROOTS[market].glob('*.parquet'))
     extended = RUNS/'research_inputs/us_extended_daily'
     if market == 'us' and extended.exists():
@@ -164,7 +170,7 @@ def prepare(market):
             c.loc[later, ['tradable_buy','tradable_sell']] = (c.loc[later, 'volume'] > 0).to_numpy()[:, None].repeat(2, axis=1)
             for col in ['tradable_buy','tradable_sell']:
                 c[col] = c[col].fillna(False).astype(bool) & (c.volume > 0)
-            c = c[c.date <= pd.Timestamp(window()[1])]
+            c = c[c.date <= cutoff]
             frames.append(c[['date','symbol',*OHLC,'volume','tradable_buy','tradable_sell','sector','eligible']])
         except (ValueError, KeyError) as exc:
             dropped[symbol] = str(exc)

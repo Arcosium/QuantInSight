@@ -10,63 +10,113 @@ import hashlib
 _LOADED_SHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
+NEURAL_MODELS=('neural_mlp','residual_mlp','lstm','gru','tcn','transformer')
+_NEURAL_MODULE=None
+_EXECUTION_MODULE=None
+_PROGRESS=None
+
+
 def domains(market):
     if market not in ('kr','us','crypto','timefolio'):raise ValueError('지원하지 않는 연구소')
-    return dict(model=['ridge','extra_trees','hist_gradient_boosting'],feature_set=['price','price_volume','price_risk','all'],lookback=[5,10,20,40],holding_sessions=[1,3,5] if market=='timefolio' else [5,10,20],selection_count=[5,10,20],training_days=[365,730],seed=[20261008],regularization=[.1,1.,10.],max_depth=[3,5,8])
+    return dict(model=['ridge','extra_trees','hist_gradient_boosting',*NEURAL_MODELS],
+        feature_set=['price','price_volume','price_risk','all','ohlc','volume'],lookback=[5,10,20,40],
+        holding_sessions=[1,3,5] if market=='timefolio' else [5,10,20],selection_count=[5,10,20],
+        training_days=[180,365,730,1095],seed=[20261008],regularization=[.1,1.,10.],max_depth=[3,5,8],
+        model_size=['compact','large'],sequence_length=[20,60],epochs=[10,30],batch_size=[128,256],learning_rate=[.0003,.001],
+        retrain_months=[1,3,6],buy_rule=['top_k','positive_score','top_quantile'],sell_rule=['rebalance','stop_take','signal_exit'],
+        position_sizing=['equal','inverse_volatility','score'],stop_loss=[.05,.1,.2],take_profit=[.1,.2,.4],
+        max_weight=[.05,.1,.2],gross_exposure=[.5,.8,1.],rebalance_sessions=[1,5,10,20],
+        target_kind=['return','risk_adjusted','direction'],news_mode=['off','activity'])
 
 
 def normalize(g,market):
     limits=domains(market)
-    if not isinstance(g,dict) or set(g)-set(limits)-{'engine'} or set(limits)-set(g):
-        raise ValueError('학습 설정 필드가 누락되거나 지원하지 않는 필드가 있음')
+    required={'model','feature_set','lookback','holding_sessions','selection_count','training_days','seed','regularization','max_depth'}
+    if not isinstance(g,dict) or set(g)-set(limits)-{'engine'} or required-set(g):raise ValueError('학습 설정 필드 누락 또는 미지원')
     if 'engine' in g and g['engine']!='learned_v1':raise ValueError('지원하지 않는 학습 엔진')
+    defaults=dict(model_size='compact',sequence_length=20,epochs=10,batch_size=128,learning_rate=.001,
+        retrain_months=3,buy_rule='top_k',sell_rule='rebalance',position_sizing='equal',stop_loss=.1,take_profit=.2,
+        max_weight=.1,gross_exposure=1.,rebalance_sessions=g['holding_sessions'],target_kind='return',news_mode='off')
     out={}
     for key,values in limits.items():
-        value=g[key]
+        value=g.get(key,defaults.get(key))
         if isinstance(value,bool):raise ValueError('잘못된 학습 설정 형식')
         if key=='seed':
             if not isinstance(value,int) or not 1<=value<=2147483647:raise ValueError('학습 seed 범위 오류')
-        elif key in ('lookback','holding_sessions','selection_count','training_days','max_depth'):
-            if not isinstance(value,int) or value not in values:raise ValueError('지원하지 않는 학습 설정: '+key)
-        elif key=='regularization':
-            if not isinstance(value,(int,float)) or value not in values:raise ValueError('지원하지 않는 정규화 계수')
+        elif key in ('lookback','holding_sessions','selection_count','training_days','max_depth','sequence_length','epochs','batch_size','retrain_months','rebalance_sessions'):
+            allowed=values+([g['holding_sessions']] if key=='rebalance_sessions' else [])
+            if not isinstance(value,int) or value not in allowed:raise ValueError('지원하지 않는 학습 설정: '+key)
+        elif key in ('regularization','learning_rate','stop_loss','take_profit','max_weight','gross_exposure'):
+            if not isinstance(value,(int,float)) or value not in values:raise ValueError('지원하지 않는 숫자 설정: '+key)
         elif not isinstance(value,str) or value not in values:raise ValueError('지원하지 않는 학습 설정: '+key)
         out[key]=value
+    if out['model'] not in NEURAL_MODELS:
+        for key in ('model_size','sequence_length','epochs','batch_size','learning_rate'):out.pop(key)
     out['engine']='learned_v1'
     return out
 
 
-def features(prices,g,market):
+def features(prices,g,market,news_path=None):
     import numpy as np
     import pandas as pd
     p=prices.sort_values(['symbol','date']).reset_index(drop=True).copy()
-    grouped=p.groupby('symbol',sort=False);w=g['lookback']
+    grouped=p.groupby('symbol',sort=False);w=g['lookback'];previous=grouped.close.shift(1)
     p['return_1']=grouped.close.pct_change(fill_method=None)
     p['return_w']=grouped.close.pct_change(w,fill_method=None)
-    p['range']=(p.high-p.low)/p.close
-    p['body']=(p.close-p.open)/p.open
+    p['range']=(p.high-p.low)/p.close;p['body']=(p.close-p.open)/p.open
     p['volatility']=p.groupby('symbol').return_1.transform(lambda s:s.rolling(w).std())
     p['trend']=p.close/grouped.close.transform(lambda s:s.rolling(w).mean())-1
     p['volume_ratio']=p.volume/grouped.volume.transform(lambda s:s.rolling(w).mean())-1
+    p['volume_change']=grouped.volume.pct_change(fill_method=None)
+    p['open_gap']=p.open/previous-1;p['high_move']=p.high/previous-1;p['low_move']=p.low/previous-1
     value=p.volume if market=='crypto' else p.volume*p.close
     p['adv20']=value.groupby(p.symbol).transform(lambda s:s.rolling(20).mean())
+    p['volume_rank']=p.groupby('date').adv20.rank(pct=True)
     names=['return_1','return_w','range','body','trend']
     if g['feature_set'] in ('price_volume','all'):names+=['volume_ratio']
     if g['feature_set'] in ('price_risk','all'):names+=['volatility']
+    if g['feature_set']=='ohlc':names=['return_1','return_w','open_gap','high_move','low_move','body','range']
+    if g['feature_set']=='volume':names=['volume_ratio','volume_change','volume_rank','return_1']
+    if g['feature_set']=='all':names+=['open_gap','high_move','low_move','volume_rank','volume_change']
+    if g.get('news_mode','off')!='off':
+        import pyarrow.parquet as pq
+        if news_path is None:
+            from .feature_sources import prepare_news
+            news_path=prepare_news(market)
+        news=pq.ParquetFile(news_path).read(use_threads=False).to_pandas()
+        p=p.merge(news,on='date',how='left',validate='many_to_one').sort_values(['symbol','date']).reset_index(drop=True)
+        grouped=p.groupby('symbol',sort=False);names+=['news_count','news_count_7']
     h=g['holding_sessions'];entry=grouped.open.shift(-1);exit_price=grouped.open.shift(-h-1)
     p['target']=exit_price/entry-1
+    if g.get('target_kind')=='direction':p['target']=np.sign(p.target)
+    elif g.get('target_kind')=='risk_adjusted':p['target']=p.target/(p.volatility.clip(lower=.001)*np.sqrt(h))
     p['label_end']=grouped.date.shift(-h-1)
-    # Labels spanning missing exchange sessions are forbidden.
     calendar=pd.DatetimeIndex(sorted(p.date.unique()));ordinal=pd.Series(calendar.get_indexer(p.date),index=p.index)
-    past=ordinal-ordinal.groupby(p.symbol).shift(max(w,20))
+    history=max(w,20)
+    if g['model'] in NEURAL_MODELS:
+        steps=g['sequence_length'];base=p[names].astype('float32');lagged=[]
+        for lag in range(steps-1,-1,-1):
+            values=base.groupby(p.symbol,sort=False).shift(lag) if lag else base
+            lagged.append(values.rename(columns={name:f'{name}_lag{lag}' for name in names}))
+        wide=pd.concat(lagged,axis=1);names=list(wide.columns);p=pd.concat([p,wide],axis=1);history+=steps-1
+        del lagged,wide,base,values
+        gc.collect()
+    past=ordinal-ordinal.groupby(p.symbol).shift(history)
     future=ordinal.groupby(p.symbol).shift(-h-1)-ordinal
-    p['ready']=p.eligible.astype(bool)&past.eq(max(w,20))&np.isfinite(p[names]).all(axis=1)
+    p['ready']=p.eligible.astype(bool)&past.eq(history)&np.isfinite(p[names]).all(axis=1)
     executable=grouped.tradable_buy.shift(-1).eq(True)&grouped.tradable_sell.shift(-h-1).eq(True)
     p.loc[~future.eq(h+1)|~executable,'target']=np.nan
     return p,names
 
 
-def estimator(g):
+def estimator(g,n_features=None):
+    if g['model'] in NEURAL_MODELS:
+        module=_NEURAL_MODULE
+        if module is None:
+            from . import neural_models as module
+        return module.NeuralRegressor(model=g['model'],input_features=n_features//g['sequence_length'],
+            sequence_length=g['sequence_length'],model_size=g['model_size'],epochs=g['epochs'],
+            batch_size=g['batch_size'],learning_rate=g['learning_rate'],seed=g['seed'])
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import Ridge
@@ -81,17 +131,35 @@ def training_rows(p,first,g):
     import pandas as pd
     rows=np.flatnonzero(p.ready & np.isfinite(p.target)&p.label_end.lt(first)&p.date.ge(first-pd.Timedelta(days=g['training_days'])))
     if len(rows)<100:raise ValueError('인과적 모델 학습 표본 부족')
-    # Deterministic bounded training, independent of target magnitudes.
-    if len(rows)>30000:rows=np.sort(np.random.default_rng(g['seed']).choice(rows,30000,replace=False))
+    if g['model'] not in NEURAL_MODELS and len(rows)>30000:rows=np.sort(np.random.default_rng(g['seed']).choice(rows,30000,replace=False))
     return rows
 
 
 def fit_model(p,names,first,g):
+    import time
+    import numpy as np
     import pandas as pd
     from threadpoolctl import threadpool_limits
-    rows=training_rows(p,first,g);model=estimator(g)
-    with threadpool_limits(limits=1):model.fit(p.iloc[rows][names].to_numpy(),p.iloc[rows].target.to_numpy())
-    proof=dict(train_start=str(p.iloc[rows].date.min().date()),train_end=str(p.iloc[rows].date.max().date()),max_label_end=str(p.iloc[rows].label_end.max().date()),model_as_of=str(first.date()),train_rows=len(rows))
+    started=time.monotonic();rows=training_rows(p,first,g);model=estimator(g,len(names));validation=[]
+    if g['model'] in NEURAL_MODELS:
+        days=sorted(p.iloc[rows].date.unique());split=pd.Timestamp(days[max(1,int(len(days)*.85))])
+        validation=rows[p.iloc[rows].date.ge(split).to_numpy()]
+        rows=rows[p.iloc[rows].label_end.lt(split).to_numpy()]
+        if len(rows)<100 or len(validation)<20:raise ValueError('시간 분리 신경망 학습·검증 표본 부족')
+        def epoch_progress(record):
+            if _PROGRESS:_PROGRESS(dict(phase='training',model=g['model'],quarter=str(first.date()),parameters=model.parameter_count_,epochs=g['epochs'],train_rows=len(rows),validation_rows=len(validation),**record))
+        model.epoch_callback=epoch_progress
+        model.fit(p.iloc[rows][names].to_numpy(dtype=np.float32),p.iloc[rows].target.to_numpy(),
+                  validation_data=(p.iloc[validation][names].to_numpy(dtype=np.float32),p.iloc[validation].target.to_numpy()))
+    else:
+        with threadpool_limits(limits=1):model.fit(p.iloc[rows][names].to_numpy(),p.iloc[rows].target.to_numpy())
+    proof=dict(train_start=str(p.iloc[rows].date.min().date()),train_end=str(p.iloc[rows].date.max().date()),max_label_end=str(p.iloc[rows].label_end.max().date()),model_as_of=str(first.date()),train_rows=len(rows),
+               input_fields=len(names),fit_seconds=time.monotonic()-started,model=g['model'],validation_rows=len(validation))
+    if len(validation):
+        proof.update(neural=model.training_proof_,validation_start=str(p.iloc[validation].date.min().date()),
+            validation_end=str(p.iloc[validation].date.max().date()),max_validation_label_end=str(p.iloc[validation].label_end.max().date()))
+        assert pd.Timestamp(proof['max_label_end'])<pd.Timestamp(proof['validation_start'])
+        assert pd.Timestamp(proof['max_validation_label_end'])<first
     assert pd.Timestamp(proof['max_label_end'])<first
     return model,proof
 
@@ -99,57 +167,29 @@ def fit_model(p,names,first,g):
 def walk_forward(p,names,g,start,end):
     import pandas as pd
     from threadpoolctl import threadpool_limits
+    from .evaluation import periods
     first=pd.Timestamp(start);final=pd.Timestamp(end)+pd.Timedelta(days=1)
-    bounds=sorted(set([first,final,*pd.date_range(first,final,freq='QS')]))
+    spans=periods(start,end);os_start=pd.Timestamp(spans['os']['start']);ros_start=pd.Timestamp(spans['ros']['start'])
+    steps=g.get('retrain_months',3);edges=[];current=first
+    while current<ros_start:
+        edges.append(current);current+=pd.DateOffset(months=steps)
+    bounds=sorted(set([first,final,*edges,*[x for x in (os_start,ros_start) if first<x<final]]))
     signals=[];proofs=[]
     for first,stop in zip(bounds[:-1],bounds[1:]):
         model,proof=fit_model(p,names,first,g)
         test=p[p.ready&p.date.ge(first)&p.date.lt(stop)].copy()
-        if test.empty:raise ValueError('분기 평가 표본 부족')
+        if test.empty:raise ValueError('순차 평가 표본 부족')
         with threadpool_limits(limits=1):test['score']=model.predict(test[names].to_numpy())
-        signals.append(test[['date','symbol','score','adv20']]);proof.update(test_start=str(first.date()),test_end_exclusive=str(stop.date()));proofs.append(proof)
+        signals.append(test[['date','symbol','score','adv20','volatility']]);proof.update(test_start=str(first.date()),test_end_exclusive=str(stop.date()));proofs.append(proof)
         del model,test;gc.collect()
     return pd.concat(signals,ignore_index=True),proofs
 
 
 def account(prices,signals,g,market,start,end):
-    """Close-t signals, next-session open fills, long-only cash account.
-
-    Missing prices never manufacture fills. Unsellable holdings stay marked at
-    their last known close, explicitly flagged in the report.
-    """
-    import math
-    import pandas as pd
-    from .period import expected_dates
-    days=expected_dates(market,start,end);bydate={d:g.set_index('symbol') for d,g in prices.groupby(prices.date.dt.strftime('%Y%m%d'))}
-    sig={d:g.sort_values(['score','symbol'],ascending=[False,True]) for d,g in signals.groupby(signals.date.dt.strftime('%Y%m%d'))}
-    initial=1e9 if market=='timefolio' else 1e8 if market=='kr' else 1e5
-    cash=float(initial);hold={};marks={};daily=[];trades=[];stale=0
-    buy_cost=.0015 if market=='timefolio' else .002 if market=='kr' else .001
-    sell_cost=.0035 if market=='timefolio' else buy_cost
-    for index,day in enumerate(days):
-        book=bydate.get(day)
-        if book is None:raise ValueError('평가일 시세 누락')
-        if index>0 and (index-1)%g['holding_sessions']==0:
-            for symbol,qty in list(hold.items()):
-                if symbol not in book.index or not bool(book.loc[symbol,'tradable_sell']):continue
-                price=float(book.loc[symbol,'open']);fee=qty*price*sell_cost;cash+=qty*price-fee
-                trades.append(dict(date=day,code=symbol,side='sell',qty=qty,price=price,fee=fee));del hold[symbol]
-            picks=sig.get(days[index-1]);equity=cash+sum(q*marks[s] for s,q in hold.items())
-            if picks is not None:
-                for row in picks.head(g['selection_count']).itertuples():
-                    if row.symbol in hold or row.symbol not in book.index or not bool(book.loc[row.symbol,'tradable_buy']):continue
-                    price=float(book.loc[row.symbol,'open']);budget=min(cash/(1+buy_cost),equity*min(.1,1/g['selection_count']),float(row.adv20)*.01)
-                    if market=='timefolio':budget=min(budget,timefolio_headroom(cash,hold,marks,book,row.symbol,buy_cost))
-                    qty=budget/price if market=='crypto' else math.floor(budget/price)
-                    if qty<=0:continue
-                    fee=qty*price*buy_cost;cash-=qty*price+fee;hold[row.symbol]=qty;marks[row.symbol]=price
-                    trades.append(dict(date=day,code=row.symbol,side='buy',qty=qty,price=price,fee=fee))
-        for symbol in hold:
-            if symbol in book.index:marks[symbol]=float(book.loc[symbol,'close'])
-            else:stale+=1
-        nav=cash+sum(q*marks[s] for s,q in hold.items());daily.append(dict(date=day,nav=nav,cash=cash,positions=len(hold)))
-    return dict(initial_cash=initial,daily=daily,trades=trades),stale
+    module=_EXECUTION_MODULE
+    if module is None:
+        from . import execution as module
+    return module.account(prices,signals,g,market,start,end,headroom=timefolio_headroom if market=='timefolio' else None)
 
 
 def timefolio_headroom(cash,hold,marks,book,symbol,buy_cost):
@@ -190,24 +230,66 @@ def timefolio_assessment(case):
 
 
 def evaluate(candidate,destination):
+    from .period import using_window,window
+    value=candidate.get('evaluation_window')
+    span=json.loads(value) if isinstance(value,str) else value or window()
+    global _PROGRESS,_NEURAL_MODULE,_EXECUTION_MODULE
+    previous=(_NEURAL_MODULE,_EXECUTION_MODULE)
+    try:
+        with using_window(*span):return _evaluate(candidate,destination)
+    finally:
+        _PROGRESS=None
+        _NEURAL_MODULE,_EXECUTION_MODULE=previous
+
+
+def _evaluate(candidate,destination):
+    import time
     import pandas as pd
     from . import learning_input,model_recipe
     from .period import window,require_complete
-    from .metrics import ledger,statistics_for
-    destination=Path(destination);destination.mkdir(parents=True,exist_ok=True)
+    from .metrics import ledger
+    from .evaluation import PROTOCOL,performance,segment_metrics
+    global _PROGRESS,_NEURAL_MODULE,_EXECUTION_MODULE
+    started=time.monotonic();destination=Path(destination);destination.mkdir(parents=True,exist_ok=True)
     market=candidate['market'];definition=candidate['definition'];g=normalize(json.loads(definition) if isinstance(definition,str) else definition,market)
     code=model_recipe.code_hashes()
     if code['learning.py']!=_LOADED_SHA256:raise ValueError('실험 시작 중 코드 변경 감지; 새 버전으로 다시 실행해 주세요.')
     model_recipe.preserve_code()
-    prices=learning_input.prepare(market);p,names=features(prices,g,market);start,end=window()
+    # Bind this trial to the archived dependencies before long-running fits.
+    # A deployment while training cannot change its later execution policy.
+    _EXECUTION_MODULE=model_recipe.saved_component({'code':code},'execution.py')
+    _NEURAL_MODULE=model_recipe.saved_component({'code':code},'neural_models.py') if g['model'] in NEURAL_MODELS else None
+    prices=learning_input.prepare(market)
+    inputs=learning_input.descriptor(market)
+    auxiliary=[]
+    if g.get('news_mode')!='off':
+        from .feature_sources import news_descriptor
+        auxiliary.append(news_descriptor(market))
+    def progress(value):
+        payload=dict(value,elapsed_seconds=time.monotonic()-started)
+        temp=destination/'progress.tmp';temp.write_text(json.dumps(payload,ensure_ascii=False));temp.replace(destination/'progress.json')
+        if 'epoch' in value:
+            from .store import event
+            event('training',dict(job=candidate.get('id'),market=market,message=f"{g['model']} {value['quarter']} · epoch {value['epoch']}/{g['epochs']} · {value['parameters']:,}계수 · {value['train_rows']:,}행"))
+    _PROGRESS=progress;progress(dict(phase='features',model=g['model']))
+    p,names=features(prices,g,market,auxiliary[0]['path'] if auxiliary else None);start,end=window()
     signals,proofs=walk_forward(p,names,g,start,end)
     case,stale=account(p,signals,g,market,start,end);require_complete([r['date'] for r in case['daily']],market)
-    recipe=model_recipe.seal(dict(version=1,market=market,definition=g,fields=names,input=learning_input.descriptor(market),libraries=model_recipe.environment(),code=code,evaluation_start=start,evaluation_end=end,folds=proofs,deploy_as_of=str((pd.Timestamp(end)+pd.Timedelta(days=1)).date()),weights_retained=False,execution=dict(signal='session close',fill='next session open',long_only=True,max_name_weight=.1,adv_participation=.01,timefolio_profile='conservative_contest_proxy' if market=='timefolio' else None),target='next-open to holding_sessions+1 open total price return'))
-    report=dict(title=candidate.get('title',g['model']),family='인공지능 학습 · '+g['model'],market=market,owner_id=candidate.get('user_id'),definition=g,model_proofs=proofs,recipe=recipe,evaluation_months=36,cases=[case],no_broker_orders=True,independent_holdout=False,weights_retained=False,competition_compliance_verified=False,
-      limitations=['반복 탐색에 사용한 36개월 개발 평가이며 독립 홀드아웃 아님','현재 보유 데이터 유니버스의 생존·수집 선택 편향','기업행사·상장폐지·체결·대회 세부 규칙 미감사; 적용 전 별도 검증 필요','롱 전용; 뉴스·공시 시점 정렬 미지원; 가격·거래량 파생 필드만 사용',f'가격 누락 보유 종목을 마지막 종가로 평가한 종목일 {stale}회'],metrics=statistics_for(ledger(case,start,end)))
+    books=ledger(case,start,end);metrics=segment_metrics(books,start,end,36)
+    recipe=model_recipe.seal(dict(version=2,market=market,definition=g,fields=names,input=inputs,auxiliary_inputs=auxiliary,libraries=model_recipe.environment(neural=g['model'] in NEURAL_MODELS),code=code,
+      evaluation_start=start,evaluation_end=end,evaluation_protocol=PROTOCOL,selection_scope='os',folds=proofs,
+      deploy_as_of=str((pd.Timestamp(end)+pd.Timedelta(days=1)).date()),weights_retained=False,
+      execution=dict(signal='session close',fill='next session open',long_only=True,config={k:g[k] for k in ('buy_rule','sell_rule','position_sizing','max_weight','gross_exposure','rebalance_sessions','stop_loss','take_profit')},adv_participation=.01),target=g['target_kind']))
+    report=dict(title=candidate.get('title',g['model']),family='인공지능 학습 · '+g['model'],market=market,owner_id=candidate.get('user_id'),definition=g,model_proofs=proofs,recipe=recipe,evaluation_months=36,
+      evaluation_window=[start,end],evaluation_protocol=PROTOCOL,performance=performance(books,start,end),selection_scope='os',
+      training_summary=dict(model=g['model'],model_size=g.get('model_size','classical'),parameters=max((x.get('neural',{}).get('parameter_count',0) for x in proofs),default=0),
+                            folds=len(proofs),seconds=time.monotonic()-started,max_train_rows=max(x['train_rows'] for x in proofs),fields=len(names),device='cpu'),
+      cases=[case],no_broker_orders=True,independent_holdout=False,weights_retained=False,competition_compliance_verified=False,
+      limitations=['IS 24개월 · OS 9개월 선발 · ROS 3개월은 탐색·선발에 미사용','OS는 반복 탐색용이며 독립 검증 아님; ROS도 과거 노출 가능성이 있어 독립 인증하지 않음',
+        '현재 보유 데이터 유니버스의 생존·수집 선택 편향','기업행사·상장폐지·체결·대회 세부 규칙 미감사','롱 전용; 뉴스는 충분한 시점 정렬 이력이 확보된 경우만 사용',f'가격 누락 보유 종목을 마지막 종가로 평가한 종목일 {stale}회'],metrics=metrics)
     if market=='timefolio':report['contest_constraints']=timefolio_assessment(case)
     (destination/'recipe.json').write_text(json.dumps(recipe,ensure_ascii=False,allow_nan=False,indent=2))
-    path=destination/'review.json';path.write_text(json.dumps(report,ensure_ascii=False,allow_nan=False));return path
+    path=destination/'review.json';path.write_text(json.dumps(report,ensure_ascii=False,allow_nan=False));progress(dict(phase='completed',**report['training_summary']));_PROGRESS=None;return path
 
 
 def retrain(recipe,destination):
@@ -224,7 +306,9 @@ def retrain(recipe,destination):
     recipe=recipe.get('recipe',recipe);model_recipe.verify(recipe)
     learner=model_recipe.saved_learner(recipe)
     g=learner.normalize(recipe['definition'],recipe['market'])
-    p,names=learner.features(pq.ParquetFile(recipe['input']['path']).read(use_threads=False).to_pandas(),g,recipe['market'])
+    raw=pq.ParquetFile(recipe['input']['path']).read(use_threads=False).to_pandas()
+    auxiliary=recipe.get('auxiliary_inputs',[])
+    p,names=learner.features(raw,g,recipe['market'],auxiliary[0]['path']) if auxiliary else learner.features(raw,g,recipe['market'])
     model,proof=learner.fit_model(p,names,pd.Timestamp(recipe['deploy_as_of']),g)
     destination=Path(destination);destination.mkdir(parents=True,exist_ok=True)
     path=destination/'model.joblib';joblib.dump(dict(model=model,fields=names,recipe_id=recipe['recipe_id'],proof=proof),path)

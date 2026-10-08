@@ -31,6 +31,11 @@ def initialize():
           CREATE TABLE IF NOT EXISTS strategy_assignments (
           user_id INTEGER NOT NULL,target TEXT NOT NULL,strategy_id TEXT NOT NULL,updated REAL NOT NULL,
           status TEXT NOT NULL,PRIMARY KEY(user_id,target));''')
+        if 'evaluation_window' not in {r['name'] for r in db.execute('PRAGMA table_info(alpha_candidates)')}:
+            import sqlite3
+            try:db.execute('ALTER TABLE alpha_candidates ADD COLUMN evaluation_window TEXT')
+            except sqlite3.OperationalError:
+                if 'evaluation_window' not in {r['name'] for r in db.execute('PRAGMA table_info(alpha_candidates)')}:raise
 
 
 def domains(market):
@@ -72,6 +77,7 @@ def _source_range(market,stamp):
 def protocol(market):
     from .learning_input import status as input_status
     from .labs import THEMES
+    from .evaluation import periods
     start,end=window();current=input_status(market)
     if market=='crypto' and not current.get('ready'):
         from .config import RUNS
@@ -86,7 +92,8 @@ def protocol(market):
                         break
         except (OSError,ValueError,KeyError):pass
     return dict(market=market,start=start,end=end,months=36,
-                description=THEMES[market]+' · 분기별 순차 학습·검증',
+                description=THEMES[market]+' · 가격·거래량 시계열 · IS 24 / OS 9 / ROS 3개월',
+                evaluation_periods=periods(),selection_scope='os',
                 source_start=current.get('source_start') or current.get('start'),
                 source_end=current.get('source_end') or current.get('end'),
                 ready=current.get('ready',False),message=current.get('message','학습 입력 준비'),
@@ -94,26 +101,119 @@ def protocol(market):
 
 
 def save_candidates(uid,market,genomes,provider):
-    initialize();p=protocol(market);saved=[]
+    from .period import using_window
+    with using_window(*window()):
+        return _save_candidates(uid,market,genomes,provider)
+
+
+def _save_candidates(uid,market,genomes,provider):
+    initialize();p=protocol(market);saved=[];span=window()
     with connect() as db:
         for value in genomes:
             g=normalize(value,market)
             body=json.dumps(g,sort_keys=True)
-            identity=hashlib.sha256(f'{uid}:{market}:{window()}:{body}'.encode()).hexdigest()[:20]
+            identity=hashlib.sha256(f'{uid}:{market}:{span}:{body}'.encode()).hexdigest()[:20]
             title=(str(g.get('model') or g.get('representation') or g.get('family'))+' · '+str(g.get('selection_count') or g.get('top_n') or '상·하위 10%'))
             if 'model' in g:title+=f" · {g['feature_set']} · {g['holding_sessions']}일"
             elif market in SOURCES:title+=f" · {g['holding_sessions']}일 · {g['mode']} · α{g['ridge_alpha']:g}"
+            if g.get('model_size'):title+=f" · {g['model_size']} · 시퀀스 {g['sequence_length']} · {g['epochs']} epochs"
             status='queued' if p['ready'] else 'waiting_data'
-            added=db.execute('INSERT OR IGNORE INTO alpha_candidates(id,user_id,market,title,definition,provider,created,status,message) VALUES(?,?,?,?,?,?,?,?,?)',
-                       (identity,uid,market,title,body,provider,time.time(),status,p['message'])).rowcount
+            message=p['message']
+            if g.get('news_mode','off')!='off':
+                from .feature_sources import news_status
+                news=news_status(market)
+                if not news['ready']:
+                    status='waiting_features';message=news['message']
+            added=db.execute('INSERT OR IGNORE INTO alpha_candidates(id,user_id,market,title,definition,provider,created,status,message,evaluation_window) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                       (identity,uid,market,title,body,provider,time.time(),status,message,json.dumps(span))).rowcount
             if added:saved.append(identity)
     return saved
 
 
 def candidates(uid,market):
     initialize()
-    with connect() as db:rows=db.execute('SELECT id,title,definition,provider,created,status,message FROM alpha_candidates WHERE user_id=? AND market=? ORDER BY created DESC LIMIT 100',(uid,market)).fetchall()
-    return [dict(r,definition=json.loads(r['definition'])) for r in rows]
+    with connect() as db:rows=db.execute('SELECT id,title,definition,provider,created,status,message,evaluation_window FROM alpha_candidates WHERE user_id=? AND market=? ORDER BY created DESC LIMIT 100',(uid,market)).fetchall()
+    return [dict(r,definition=json.loads(r['definition']),evaluation_window=json.loads(r['evaluation_window']) if r['evaluation_window'] else None,progress=training_progress(r['id'])) for r in rows]
+
+
+def candidate_window(row):
+    """The saved ID must authenticate the exact dates used to create the recipe."""
+    from .period import using_window
+    span=json.loads(row['evaluation_window']) if row.get('evaluation_window') else list(window())
+    if not isinstance(span,(list,tuple)) or len(span)!=2 or any(not isinstance(x,str) or len(x)!=8 for x in span):raise ValueError('Invalid candidate window')
+    with using_window(*span):
+        expected=hashlib.sha256(f"{row['user_id']}:{row['market']}:{tuple(span)}:{row['definition']}".encode()).hexdigest()[:20]
+        if row['id']!=expected:raise ValueError('Candidate window does not match identity')
+    return tuple(span)
+
+
+def refresh_queued_window(row):
+    """Only not-yet-started trials move to today's window; running trials stay sealed."""
+    from .period import using_window
+    with using_window(*window()):return _refresh_queued_window(row)
+
+
+def _refresh_queued_window(row):
+    if row.get('status') not in ('queued','waiting_data','waiting_features'):return row
+    if candidate_window(row)==window():return row
+    save_candidates(row['user_id'],row['market'],[json.loads(row['definition'])],row['provider'])
+    body=json.dumps(normalize(json.loads(row['definition']),row['market']),sort_keys=True)
+    identity=hashlib.sha256(f"{row['user_id']}:{row['market']}:{window()}:{body}".encode()).hexdigest()[:20]
+    with connect() as db:
+        db.execute("UPDATE alpha_candidates SET status='retired',message='새 평가 기간의 후보로 이동' WHERE id=? AND status IN ('queued','waiting_data','waiting_features')",(row['id'],))
+        db.execute('INSERT OR IGNORE INTO lab_lineage SELECT ?,market,generation,parents,operator FROM lab_lineage WHERE id=?',(identity,row['id']))
+        current=db.execute('SELECT * FROM alpha_candidates WHERE id=?',(identity,)).fetchone()
+    return dict(current) if current and current['status']=='queued' else None
+
+
+def training_progress(identity):
+    from .config import RUNS
+    if len(identity)!=20 or any(c not in '0123456789abcdef' for c in identity):return None
+    path=RUNS/'market_experiments'/identity/'progress.json'
+    try:
+        if path.stat().st_size>16384:return None
+        data=json.loads(path.read_text())
+        return {k:v for k,v in data.items() if k in ('phase','model','parameters','epoch','epochs',
+                'train_rows','validation_rows','elapsed_seconds','quarter') and isinstance(v,(str,int,float))}
+    except (OSError,ValueError,TypeError,AttributeError):return None
+
+
+def is_neural(definition):
+    from .labs import NEURAL_MODELS
+    try:
+        value=json.loads(definition) if isinstance(definition,str) else definition
+        return value.get('model') in NEURAL_MODELS
+    except (ValueError,TypeError,AttributeError):return False
+
+
+def deployment_neural(row):
+    """A deployment uses the stored recipe, not whichever model the planner prefers."""
+    from pathlib import Path
+    try:
+        payload=json.loads(row['payload']) if row.get('payload') else {}
+        genome=payload.get('genome') or payload.get('definition')
+        if genome:return is_neural(genome)
+        source=Path(row['source'])
+        if source.stat().st_size>8_000_000:return True  # Unknown large recipe is conservative.
+        report=json.loads(source.read_text())
+        return is_neural(report.get('definition') or report.get('genome') or (report.get('recipe') or {}).get('definition'))
+    except (OSError,ValueError,KeyError,TypeError):return True
+
+
+def neural_slot_available(memory_free):
+    from .store import setting
+    if not setting('neural_research_enabled',False) or int(setting('memory_gb',8))<6 or memory_free<6*2**30:return False
+    with connect() as db:
+        running=db.execute("SELECT definition FROM alpha_candidates WHERE status='running'").fetchall()
+        deployments=db.execute("SELECT d.source,s.payload FROM model_deployments d LEFT JOIN strategies s ON s.id=d.strategy_id WHERE d.status='training'").fetchall()
+    return not any(is_neural(r['definition']) for r in running) and not any(deployment_neural(dict(r)) for r in deployments)
+
+
+def pick_candidate(rows,neural_available):
+    """Reserve the next free neural slot for the oldest neural trial in this market."""
+    neural=[r for r in rows if is_neural(r['definition'])]
+    classical=[r for r in rows if not is_neural(r['definition'])]
+    return (neural[0] if neural_available and neural else classical[0] if classical else None)
 
 
 def visible(summary,person,market=None):
@@ -159,7 +259,9 @@ def tick(capacity):
     from .deployment import initialize as deployment_init
     deployment_init()
     if available:
-        with connect() as db:pending=db.execute("SELECT id FROM model_deployments WHERE status='queued' ORDER BY created LIMIT 1").fetchone()
+        with connect() as db:pending_rows=db.execute("SELECT d.*,s.payload FROM model_deployments d LEFT JOIN strategies s ON s.id=d.strategy_id WHERE d.status='queued' ORDER BY d.created LIMIT 100").fetchall()
+        neural_available=neural_slot_available(memory_available())
+        pending=next((r for r in pending_rows if not deployment_neural(dict(r)) or neural_available),None)
         if pending:
             identity=pending['id']
             with connect() as db:db.execute("UPDATE model_deployments SET status='training',message='동일 조건 모델 재학습 중' WHERE id=?",(identity,))
@@ -186,11 +288,15 @@ def tick(capacity):
             continue
         with connect() as db:
             db.execute("UPDATE alpha_candidates SET status='queued',message='36개월 평가 대기' WHERE market=? AND status='waiting_data'",(market,))
-            waiting=db.execute("SELECT * FROM alpha_candidates WHERE status='queued' AND market=? AND json_extract(definition,'$.model') IS NOT NULL ORDER BY created LIMIT 1",(market,)).fetchone()
+            pending_rows=db.execute("SELECT * FROM alpha_candidates WHERE status='queued' AND market=? AND json_extract(definition,'$.model') IS NOT NULL ORDER BY created LIMIT 256",(market,)).fetchall()
+        waiting=pick_candidate(pending_rows,neural_slot_available(memory_available()))
         if waiting:
             row=dict(waiting);identity=row['id']
-            expected=hashlib.sha256(f"{row['user_id']}:{market}:{window()}:{row['definition']}".encode()).hexdigest()[:20]
-            if identity!=expected:
+            try:
+                row=refresh_queued_window(row)
+                if row is None:continue
+                identity=row['id'];span=candidate_window(row)
+            except (ValueError,TypeError):
                 with connect() as db:db.execute("UPDATE alpha_candidates SET status='retired',message='평가 기간 변경' WHERE id=?",(identity,))
                 continue
             with connect() as db:db.execute("UPDATE alpha_candidates SET status='running',message='36개월 순차 모델 학습·계좌 평가' WHERE id=?",(identity,))
@@ -200,6 +306,8 @@ def tick(capacity):
                 raise
             event('job_started',dict(job=identity,market=market,message=row['title']))
             available-=1;set_setting('lab_cursor',(labs.MARKETS.index(market)+1)%4)
+        # A long neural fit must not idle the lightweight slot. The planner caps
+        # outstanding neural proposals and replenishes classical trials only.
         elif market not in _PLANNERS and time.time()>labs.state(market).get('retry_after',0):
             _PLANNERS[market]=spawn(['autofolio.labs',str(uid),market],RUNS/f'{market}-planner.log')
             available-=1;set_setting('lab_cursor',(labs.MARKETS.index(market)+1)%4)

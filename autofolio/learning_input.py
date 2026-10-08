@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from .config import HOME, RUNS
-from .period import window, expected_dates
+from .period import window, expected_dates, using_window, last_complete_date
 
 
 def paths(market):
@@ -93,13 +93,13 @@ def source_signature(refs,end):
     return hashlib.sha256(json.dumps(dict(version=3,end=str(end),sources=refs),sort_keys=True).encode()).hexdigest()
 
 
-def cached_symbol(symbol,signature):
+def cached_symbol(symbol,signature=None):
     import pyarrow.parquet as pq
     from .model_recipe import file_hash
     data,audit=symbol_cache_paths(symbol)
     try:
         meta=json.loads(audit.read_text())
-        if meta['source_signature']!=signature or meta['content_sha256']!=file_hash(data):return None
+        if (signature is not None and meta['source_signature']!=signature) or meta['content_sha256']!=file_hash(data):return None
         return pq.ParquetFile(data).read(use_threads=False).to_pandas(),meta
     except (OSError,ValueError,KeyError):return None
 
@@ -124,9 +124,23 @@ def prepare_symbol(folder,months,live_by_month,end):
     if cached is not None:
         d,meta=cached
     else:
-        parts=[];rejected={};duplicates_total=0
+        previous=cached_symbol(symbol)
+        old_frame,old_meta=previous if previous else (None,{})
+        def source_month(ref):
+            path=Path(ref['path'])
+            return path.name[5:12] if path.name.startswith('part-') else path.parent.name[5:12] if path.parent.name.startswith('date=') else ''
+        parts=[];reused_frames=[];rejected={};duplicates_total=0;duplicate_by_month={}
         for month,(history,live) in monthly.items():
             first=pd.Timestamp(month+'-01');stop=first+pd.offsets.MonthBegin(1);minute_parts=[]
+            current_refs=[r for r in refs if source_month(r)==month]
+            old_refs=[r for r in old_meta.get('source_references',[]) if source_month(r)==month]
+            if previous and current_refs and current_refs==old_refs and month in old_meta.get('duplicate_by_month',{}):
+                saved=old_frame[(old_frame.date>=first)&(old_frame.date<stop)]
+                if not saved.empty:reused_frames.append(saved.copy())
+                if old_meta.get('rejected_rows',{}).get(month):rejected[month]=old_meta['rejected_rows'][month]
+                duplicate_by_month[month]=old_meta['duplicate_by_month'][month]
+                duplicates_total+=duplicate_by_month[month]
+                continue
             for priority,files in enumerate((history,live)):
                 for file in files:
                     for batch in pq.ParquetFile(file).iter_batches(batch_size=131072,columns=['ts','base','open','high','low','close','quote_volume'],use_threads=False):
@@ -134,6 +148,7 @@ def prepare_symbol(folder,months,live_by_month,end):
                         if not d.empty:d['_source']=priority;minute_parts.append(d)
             if not minute_parts:continue
             d,duplicates=canonical_minutes(minute_parts,reject_invalid=True);duplicates_total+=duplicates
+            duplicate_by_month[month]=duplicates
             if d.attrs['rejected_rows']:rejected[month]=d.attrs['rejected_rows']
             if not d.empty:parts.append(daily_minutes(d))
         if parts:
@@ -142,8 +157,9 @@ def prepare_symbol(folder,months,live_by_month,end):
             d['tradable_buy']=d['tradable_sell']=d.eligible;d=d.drop(columns='minutes')
         else:
             d=pd.DataFrame(columns=['date','open','high','low','close','volume','symbol','sector','eligible','tradable_buy','tradable_sell'])
+        if reused_frames:d=pd.concat(([d] if not d.empty else [])+reused_frames,ignore_index=True).sort_values('date').reset_index(drop=True)
         if refs!=input_fingerprints([Path(r['path']) for r in refs]):raise ValueError('크립토 입력 파일 변경 감지; 준비 재시도 필요')
-        meta=save_symbol(symbol,d,dict(symbol=symbol,source_signature=signature,source_references=refs,rejected_rows=rejected,duplicate_minutes=duplicates_total))
+        meta=save_symbol(symbol,d,dict(symbol=symbol,source_signature=signature,source_references=refs,rejected_rows=rejected,duplicate_minutes=duplicates_total,duplicate_by_month=duplicate_by_month))
     return symbol,d,meta,refs,int(cached is not None)
 
 
@@ -165,6 +181,11 @@ def ordered_symbols(folders,months,live_by_month,end,workers):
 
 
 def prepare(market):
+    with using_window(*window()):
+        return _prepare(market)
+
+
+def _prepare(market):
     import pandas as pd
     import pyarrow.parquet as pq
     if market != 'crypto':
@@ -200,6 +221,8 @@ def prepare(market):
                 print(json.dumps(dict(phase='crypto_daily_input',workers=workers,processed=number,total=len(folders),cache_hits=cache_hits,rejected_rows=sum(sum(x.values()) for x in rejected_rows.values()))),flush=True)
         if not frames: raise ValueError('크립토 원본 분봉 없음')
         out=pd.concat(frames,ignore_index=True).sort_values(['symbol','date']).reset_index(drop=True)
+        completed=min(end,pd.Timestamp(last_complete_date('crypto'))+pd.Timedelta(days=1))
+        out=out[out.date<completed].copy()
         from .research_input import validate_frame
         for _, group in out.groupby('symbol',sort=False): validate_frame(group)
         counts=out[out.eligible].groupby(out.date.dt.strftime('%Y%m%d')).symbol.nunique()
@@ -207,7 +230,8 @@ def prepare(market):
         repair_info={}
         if missing:
             from .crypto_repair import repair
-            out,repair_info=repair(out,missing,source)
+            closed_missing=[day for day in missing if pd.Timestamp(day)<completed]
+            out,repair_info=repair(out,closed_missing,source)
             counts=out[out.eligible].groupby(out.date.dt.strftime('%Y%m%d')).symbol.nunique()
             missing=[day for day in expected_dates('crypto',*window()) if counts.get(day,0)<20]
         info=dict(learning_input_version=3,ready=not missing,window=list(window()),symbols=int(out.symbol.nunique()),start=str(out.date.min().date()),end=str(out.date.max().date()),

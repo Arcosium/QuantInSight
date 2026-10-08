@@ -56,3 +56,21 @@ def test_cache_checks_source_signature_and_derived_content(tmp_path,monkeypatch)
     assert learning_input.cached_symbol('BTC',changed) is None
     data,_=learning_input.symbol_cache_paths('BTC');data.write_bytes(b'corrupted')
     assert learning_input.cached_symbol('BTC',signature) is None
+
+
+def test_daily_roll_reuses_verified_unchanged_months(tmp_path,monkeypatch):
+    from autofolio import learning_input as module
+    monkeypatch.setattr(module,'RUNS',tmp_path/'runs')
+    folder=tmp_path/'history/base=BTC';folder.mkdir(parents=True)
+    for month in ('2026-01','2026-02'):
+        ts=pd.Timestamp(month+'-01').value//10**6
+        pd.DataFrame(dict(ts=[ts,ts+60000],base=['BTC']*2,open=[1.,1.],high=[2.,2.],
+                          low=[.5,.5],close=[1.,1.],quote_volume=[1.,1.])).to_parquet(folder/f'part-{month}.parquet')
+    _,first,meta,_,_=module.prepare_symbol(folder,['2026-01','2026-02'],{},pd.Timestamp('2026-02-02'))
+    assert set(meta['duplicate_by_month'])=={'2026-01','2026-02'}
+    def reread(*args,**kwargs):raise AssertionError('unchanged minute month was parsed again')
+    monkeypatch.setattr(module,'canonical_minutes',reread)
+    _,second,_,_,_=module.prepare_symbol(folder,['2026-01','2026-02'],{},pd.Timestamp('2026-02-03'))
+    pd.testing.assert_frame_equal(first,second)
+    path=folder/'part-2026-02.parquet';frame=pd.read_parquet(path);frame.loc[0,'close']=1.5;frame.to_parquet(path)
+    with pytest.raises(AssertionError):module.prepare_symbol(folder,['2026-01','2026-02'],{},pd.Timestamp('2026-02-04'))
