@@ -1,0 +1,16 @@
+# ArcTrade — 타임폴리오 platinumcasillas 대회계정 실주문 루프 + 대시보드.
+# signals.jsonl(lagtrading.service 생성) 소비 → 엣지게이트 통과 BUY 를 contest.timefolio.net 에 실주문.
+# 127.0.0.1:8620 바인딩(공개는 arctrade.ai-ve.uk 터널 예정). 비밀/상태: ~/vault/Lag_Trading
+[Unit]
+Description=QuantInSight Timefolio account adapter
+After=network.target
+
+[Service]
+WorkingDirectory=/home/arcosium/projects/QuantInSight/integrations/timefolio
+EnvironmentFile=/home/arcosium/vault/ArcTrade/arctrade.env
+ExecStart=/usr/bin/python3.12 -m uvicorn web.gateway:app --host 127.0.0.1 --port 8620
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Autofolio local genomic alpha search
+After=network.target
+
+[Service]
+WorkingDirectory=/home/arcosium/projects/QuantInSight
+ExecStart=/usr/bin/python3 -m autofolio.worker
+Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 CUDA_VISIBLE_DEVICES=
+CPUQuota=400%
+MemoryMax=8G
+MemorySwapMax=0
+Nice=19
+IOSchedulingClass=idle
+OOMPolicy=continue
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

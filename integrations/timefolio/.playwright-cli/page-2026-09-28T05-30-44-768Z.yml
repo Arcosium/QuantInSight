@@ -1,0 +1,20 @@
+- generic [active] [ref=f1e1]:
+  - link "본문으로 이동" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - banner [ref=f1e3]:
+    - link "ArcTrade 첫 화면으로" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+      - text: ArcTrade
+    - generic [ref=f1e5]: HYFE · 시장충격 실험 · 모의 주문
+  - main [ref=f1e6]:
+    - heading "내 주문이 호가창을 바꾸는 순간" [level=1] [ref=f1e7]
+    - paragraph [ref=f1e8]: 관측한 호가창에 같은 총량을 한 번에 넣거나 나누어 넣습니다. 체결 비용과 남은 잔량을 비교하고, 유동성 회복 속도를 바꿔 결과가 어떻게 달라지는지 살펴보세요.
+    - paragraph [ref=f1e9]: 실측 데이터와 분석 결과를 불러오는 중입니다.
+    - paragraph [ref=f1e10]:
+      - link "동일 가격 refill 보완 분석 · 본인 주문 관측기 열기" [ref=f1e11] [cursor=pointer]:
+        - /url: /static/impact-review.html?v=20260928-1
+    - paragraph [ref=f1e12]:
+      - link "90일 백필 · 5분 가격 반응 · 기존 전략 페이퍼 실행 결과" [ref=f1e13] [cursor=pointer]:
+        - /url: /static/impact-longitudinal.html?v=20260928-2
+    - paragraph [ref=f1e14]: 현재 화면은 가상 주문 모형입니다. 실제 본인 주문 파일럿은 별도 관측기에서 주문 기록과 공개 호가를 대조합니다.
+    - generic [ref=f1e15]: 실측 곡선은 과거 체결 후의 관찰 결과입니다. 위 가상 주문 비교는 명시한 회복 가정 아래의 계산이며 실제 주문을 전송하지 않습니다.

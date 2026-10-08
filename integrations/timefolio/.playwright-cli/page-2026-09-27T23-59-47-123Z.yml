@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "ArcTrade" [ref=e3] [cursor=pointer]:
+      - /url: /
+    - link "가상 주문 비교" [ref=e4] [cursor=pointer]:
+      - /url: /static/impact-lab.html?v=20260928-1
+  - main [ref=e5]:
+    - heading "소모된 호가와 다시 채워지는 잔량" [level=1] [ref=e6]: 소모된 호가와다시 채워지는 잔량
+    - paragraph [ref=e7]: 개별 가격의 refill, 시장 상태별 가격 반응, 주문 흐름 종료 후 회복을 살펴봅니다. 실제 본인 주문은 기록을 불러온 뒤 공개 호가와 맞춰 별도로 관측합니다.
+    - paragraph [ref=e8]: 공개 분석 자료를 불러오는 중입니다.
+    - alert
+    - generic [ref=e9]: HYFE 9.28 · 공개 시장 관측과 사용자 제공 주문 기록의 대조. 기존 가상 주문 비교는 별도의 모형 실험입니다.

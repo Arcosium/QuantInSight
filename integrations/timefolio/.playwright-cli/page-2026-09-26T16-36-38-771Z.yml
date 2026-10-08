@@ -1,0 +1,128 @@
+- generic [active] [ref=f3e1]:
+  - link "본문으로 이동" [ref=f3e2] [cursor=pointer]:
+    - /url: "#main"
+  - banner [ref=f3e3]:
+    - link "ArcTrade 첫 화면으로" [ref=f3e4] [cursor=pointer]:
+      - /url: /
+      - text: ArcTrade
+    - generic [ref=f3e5]: HYFE · 시장충격 실험 · 모의 주문
+  - main [ref=f3e6]:
+    - heading "내 주문이 호가창을 바꾸는 순간" [level=1] [ref=f3e7]
+    - paragraph [ref=f3e8]: 관측한 호가창에 같은 총량을 한 번에 넣거나 나누어 넣습니다. 체결 비용과 남은 잔량을 비교하고, 유동성 회복 속도를 바꿔 결과가 어떻게 달라지는지 살펴보세요.
+    - paragraph [ref=f3e9]: Bybit spot · ETHUSDT · 2026. 9. 27. 1시 16분 18초 ~ 2026. 9. 27. 1시 26분 18초 KST · 체결 416건
+    - generic [ref=f3e10]:
+      - region "가상 주문 실험" [ref=f3e11]:
+        - generic [ref=f3e12]:
+          - generic [ref=f3e13]:
+            - text: 주문 방향
+            - combobox "주문 방향" [ref=f3e14] [cursor=pointer]:
+              - option "매수" [selected]
+              - option "매도"
+          - generic [ref=f3e15]:
+            - text: 호가 상태
+            - combobox "호가 상태" [ref=f3e16] [cursor=pointer]:
+              - option "얇은 호가" [selected]
+              - option "두꺼운 호가"
+          - generic [ref=f3e17]:
+            - text: 총주문 수량 (ETH)
+            - spinbutton "총주문 수량 (ETH)" [ref=f3e18]: "5"
+          - paragraph [ref=f3e19]: 상대편 5단계 잔량 1.9884 ETH의 251.5%. 호가 상태를 바꿔도 주문 수량은 유지됩니다.
+          - generic [ref=f3e20]:
+            - generic [ref=f3e21]:
+              - text: 분할 횟수
+              - spinbutton "분할 횟수" [ref=f3e22]: "5"
+            - generic [ref=f3e23]:
+              - text: 종료 시각 (초)
+              - spinbutton "종료 시각 (초)" [ref=f3e24]: "5"
+          - generic [ref=f3e25]:
+            - text: 잔량 회복
+            - combobox "잔량 회복" [ref=f3e26] [cursor=pointer]:
+              - option "관측한 회복 시간" [disabled]
+              - option "회복 없음" [selected]
+              - option "직접 가정"
+          - paragraph [ref=f3e27]: 잔량 감소 사건 5건으로 이 상태의 회복 시간을 확정하지 못했습니다. 회복 없음 또는 직접 가정으로 비교하세요.
+          - generic [ref=f3e28]:
+            - text: 편도 수수료 가정 (bp)
+            - spinbutton "편도 수수료 가정 (bp)" [ref=f3e29]: "0"
+          - button "가상 주문 비교" [disabled] [ref=f3e30]
+          - status [ref=f3e31]: 호가 잔량을 차감하며 계산 중입니다.
+        - generic [ref=f3e32]:
+          - paragraph [ref=f3e33]: 주문량과 회복 속도를 정해 비교를 실행하세요.
+          - table "주문 방식별 결과" [ref=f3e35]:
+            - rowgroup [ref=f3e36]:
+              - row [ref=f3e37]:
+                - columnheader "측정값" [ref=f3e38]
+                - columnheader "한 번에" [ref=f3e39]
+                - columnheader "나누어" [ref=f3e40]
+            - rowgroup
+          - paragraph [ref=f3e41]: 비용은 시작 mid price 대비이며 스프레드 비용을 포함합니다. 두 방식 모두 전량 체결됐을 때만 비용 차이를 비교합니다.
+          - heading "주문 후 남아 있는 상대편 잔량" [level=3] [ref=f3e42]
+          - generic [ref=f3e43]:
+            - generic [ref=f3e44]: 한 번에 주문
+            - generic [ref=f3e45]: 분할 주문
+          - img "주문 방식별 표시 잔량 추이" [ref=f3e46]
+          - paragraph [ref=f3e47]: 점선 기준 100%는 주문이 없는 경우입니다. 원래 5단계 가격 구간의 잔량을 추적합니다. 모형은 원래 가격대의 잔량을 회복시키며 외부 가격 추세와 다른 참여자의 반응은 가정하지 않습니다.
+          - heading "첫 주문 직후 호가 잔량" [level=3] [ref=f3e48]
+          - generic [ref=f3e49]:
+            - paragraph [ref=f3e51]: 한 번에 주문
+            - paragraph [ref=f3e53]: 첫 분할 주문
+          - group [ref=f3e54]:
+            - generic "실험 가정과 해석 범위" [ref=f3e55] [cursor=pointer]
+      - region [ref=f3e56]:
+        - heading "실험의 바탕이 된 관측 결과" [level=2] [ref=f3e57]
+        - paragraph [ref=f3e58]: 100ms 체결 묶음 중 방향 비중 80% 이상·거래대금 상위 25%를 골랐습니다. 관찰 구간이 겹치지 않는 22건을 10초간 추적했습니다. 음영은 1분 군집 부트스트랩의 점별 95% 구간입니다.
+        - generic [ref=f3e59]:
+          - article [ref=f3e60]:
+            - heading "4 · 줄어든 잔량은 돌아왔는가" [level=3] [ref=f3e61]
+            - paragraph [ref=f3e62]: 초기 잔량이 20% 이상 감소한 13건 중 5건이 원래 가격 구간 잔량의 90%까지 회복했습니다. 절반 이상이 관찰창에서 회복하지 않아 중앙 회복 시간을 정하지 못했습니다.
+            - img "고정 가격 구간 잔량 회복 곡선" [ref=f3e63]:
+              - generic [ref=f3e64]: "0.00"
+              - generic [ref=f3e65]: "0.43"
+              - generic [ref=f3e66]: "0.86"
+              - generic [ref=f3e67]: "1.29"
+              - generic [ref=f3e68]: "0.0"
+              - generic [ref=f3e69]: "2.0"
+              - generic [ref=f3e70]: "4.0"
+              - generic [ref=f3e71]: "6.0"
+              - generic [ref=f3e72]: "8.0"
+              - generic [ref=f3e73]: "10.0"
+              - generic [ref=f3e74]: 사건 전 잔량 대비 배수
+              - generic [ref=f3e75]: 경과 시간 (초)
+          - article [ref=f3e78]:
+            - heading "5 · 얇은 호가와 두꺼운 호가" [level=3] [ref=f3e79]
+            - paragraph [ref=f3e80]: 5초 가격 반응은 얇은 호가 0.762bp, 두꺼운 호가 0.688bp였습니다. 같은 방향·비슷한 규모로 짝지은 표본은 2쌍입니다. 단순 차이를 인과효과로 해석하지 않습니다.
+            - img "유동성 상태별 가격 반응" [ref=f3e81]:
+              - generic [ref=f3e82]: "0.00"
+              - generic [ref=f3e83]: "0.51"
+              - generic [ref=f3e84]: "1.02"
+              - generic [ref=f3e85]: "1.53"
+              - generic [ref=f3e86]: "0.0"
+              - generic [ref=f3e87]: "2.0"
+              - generic [ref=f3e88]: "4.0"
+              - generic [ref=f3e89]: "6.0"
+              - generic [ref=f3e90]: "8.0"
+              - generic [ref=f3e91]: "10.0"
+              - generic [ref=f3e92]: 방향을 맞춘 mid 변화 (bp)
+              - generic [ref=f3e93]: 경과 시간 (초)
+            - generic [ref=f3e98]:
+              - generic [ref=f3e99]: 얇은 호가
+              - generic [ref=f3e100]: 두꺼운 호가
+          - article [ref=f3e101]:
+            - heading "6 · 가격 변화는 얼마나 남았는가" [level=3] [ref=f3e102]
+            - paragraph [ref=f3e103]: 평균 가격 반응은 9.4초에 0.764bp, 10초에 0.750bp였습니다. 관찰창 안에서 뚜렷한 절반 감쇠를 확인하지 못했습니다.
+            - img "큰 체결 이후 평균 가격 반응과 신뢰구간" [ref=f3e104]:
+              - generic [ref=f3e105]: "0.00"
+              - generic [ref=f3e106]: "0.41"
+              - generic [ref=f3e107]: "0.82"
+              - generic [ref=f3e108]: "1.23"
+              - generic [ref=f3e109]: "0.0"
+              - generic [ref=f3e110]: "2.0"
+              - generic [ref=f3e111]: "4.0"
+              - generic [ref=f3e112]: "6.0"
+              - generic [ref=f3e113]: "8.0"
+              - generic [ref=f3e114]: "10.0"
+              - generic [ref=f3e115]: 방향을 맞춘 mid 변화 (bp)
+              - generic [ref=f3e116]: 경과 시간 (초)
+        - group [ref=f3e119]:
+          - generic "데이터와 분석의 한계" [ref=f3e120] [cursor=pointer]
+    - generic [ref=f3e121]: 실측 곡선은 과거 체결 후의 관찰 결과입니다. 위 가상 주문 비교는 명시한 회복 가정 아래의 계산이며 실제 주문을 전송하지 않습니다.

@@ -1,0 +1,7 @@
+[Unit]
+Description=Shared ArcTrade and Autofolio low-priority research budget
+
+[Slice]
+CPUQuota=400%
+MemoryMax=8G
+MemorySwapMax=0

@@ -1,0 +1,243 @@
+- generic [active] [ref=f1e1]:
+  - link "본문으로 이동" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - banner [ref=f1e3]:
+    - link "ArcTrade 첫 화면으로" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+      - text: ArcTrade
+    - generic [ref=f1e5]: HYFE · 시장충격 실험 · 모의 주문
+  - main [ref=f1e6]:
+    - heading "내 주문이 호가창을 바꾸는 순간" [level=1] [ref=f1e7]
+    - paragraph [ref=f1e8]: 관측한 호가창에 같은 총량을 한 번에 넣거나 나누어 넣습니다. 체결 비용과 남은 잔량을 비교하고, 유동성 회복 속도를 바꿔 결과가 어떻게 달라지는지 살펴보세요.
+    - paragraph [ref=f1e9]: Bybit spot · ETHUSDT · 2026. 9. 27. 1시 16분 18초 ~ 2026. 9. 27. 1시 26분 18초 KST · 체결 416건
+    - generic [ref=f1e10]:
+      - region "가상 주문 실험" [ref=f1e11]:
+        - generic [ref=f1e12]:
+          - generic [ref=f1e13]:
+            - text: 주문 방향
+            - combobox "주문 방향" [ref=f1e14] [cursor=pointer]:
+              - option "매수"
+              - option "매도" [selected]
+          - generic [ref=f1e15]:
+            - text: 호가 상태
+            - combobox "호가 상태" [ref=f1e16] [cursor=pointer]:
+              - option "얇은 호가" [selected]
+              - option "두꺼운 호가"
+          - generic [ref=f1e17]:
+            - text: 총주문 수량 (ETH)
+            - spinbutton "총주문 수량 (ETH)" [ref=f1e18]: "5"
+          - paragraph [ref=f1e19]: 상대편 5단계 잔량 1.9048 ETH의 262.5%. 호가 상태를 바꿔도 주문 수량은 유지됩니다.
+          - generic [ref=f1e20]:
+            - generic [ref=f1e21]:
+              - text: 분할 횟수
+              - spinbutton "분할 횟수" [ref=f1e22]: "5"
+            - generic [ref=f1e23]:
+              - text: 종료 시각 (초)
+              - spinbutton "종료 시각 (초)" [ref=f1e24]: "5"
+          - generic [ref=f1e25]:
+            - text: 잔량 회복
+            - combobox "잔량 회복" [ref=f1e26] [cursor=pointer]:
+              - option "관측한 회복 시간" [disabled]
+              - option "회복 없음"
+              - option "직접 가정" [selected]
+          - generic [ref=f1e122]:
+            - text: 잔량 부족분 반감기 (초)
+            - spinbutton "잔량 부족분 반감기 (초)" [ref=f1e123]: "1"
+          - paragraph [ref=f1e27]: 잔량 감소 사건 5건으로 이 상태의 회복 시간을 확정하지 못했습니다. 회복 없음 또는 직접 가정으로 비교하세요.
+          - generic [ref=f1e28]:
+            - text: 편도 수수료 가정 (bp)
+            - spinbutton "편도 수수료 가정 (bp)" [ref=f1e29]: "0"
+          - button "가상 주문 비교" [ref=f1e30] [cursor=pointer]
+          - status [ref=f1e31]: 조건을 바꿨습니다. 가상 주문 비교를 눌러 갱신하세요.
+        - generic [ref=f1e32]:
+          - paragraph [ref=f1e33]: 이 조건에서 분할 주문의 비용이 1.046bp 낮습니다.
+          - table "주문 방식별 결과" [ref=f1e35]:
+            - rowgroup [ref=f1e36]:
+              - row [ref=f1e37]:
+                - columnheader "측정값" [ref=f1e38]
+                - columnheader "한 번에" [ref=f1e39]
+                - columnheader "나누어" [ref=f1e40]
+            - rowgroup [ref=f1e124]:
+              - row [ref=f1e244]:
+                - cell "체결 수량 (ETH)" [ref=f1e245]
+                - cell "5.0000" [ref=f1e246]
+                - cell "5.0000" [ref=f1e247]
+              - row [ref=f1e248]:
+                - cell "미체결 수량 (ETH)" [ref=f1e249]
+                - cell "0.0000" [ref=f1e250]
+                - cell "0.0000" [ref=f1e251]
+              - row [ref=f1e252]:
+                - cell "평균 체결가 (USDT)" [ref=f1e253]
+                - cell "2,690.64" [ref=f1e254]
+                - cell "2,690.36" [ref=f1e255]
+              - row [ref=f1e256]:
+                - cell "호가 소진 추가비용 (bp)" [ref=f1e257]
+                - cell "1.046" [ref=f1e258]
+                - cell "0.000" [ref=f1e259]
+              - row [ref=f1e260]:
+                - cell "시작 mid 대비 총비용 (bp)" [ref=f1e261]
+                - cell "1.065" [ref=f1e262]
+                - cell "0.019" [ref=f1e263]
+              - row [ref=f1e264]:
+                - cell "첫 주문 직후 mid 변화 (bp)" [ref=f1e265]
+                - cell "1.115" [ref=f1e266]
+                - cell "0.000" [ref=f1e267]
+          - paragraph [ref=f1e41]: 비용은 시작 mid price 대비이며 스프레드 비용을 포함합니다. 두 방식 모두 전량 체결됐을 때만 비용 차이를 비교합니다.
+          - heading "주문 후 남아 있는 상대편 잔량" [level=3] [ref=f1e42]
+          - generic [ref=f1e43]:
+            - generic [ref=f1e44]: 한 번에 주문
+            - generic [ref=f1e45]: 분할 주문
+          - img "주문 방식별 표시 잔량 추이" [ref=f1e46]:
+            - generic [ref=f1e268]: "-6.00"
+            - generic [ref=f1e269]: "32.67"
+            - generic [ref=f1e270]: "71.33"
+            - generic [ref=f1e271]: "110.00"
+            - generic [ref=f1e272]: "0.0"
+            - generic [ref=f1e273]: "1.0"
+            - generic [ref=f1e274]: "2.0"
+            - generic [ref=f1e275]: "3.0"
+            - generic [ref=f1e276]: "4.0"
+            - generic [ref=f1e277]: "5.0"
+            - generic [ref=f1e278]: 시작 5단계 구간 잔량 대비 (%)
+            - generic [ref=f1e279]: 경과 시간 (초)
+          - paragraph [ref=f1e47]: 점선 기준 100%는 주문이 없는 경우입니다. 원래 5단계 가격 구간의 잔량을 추적합니다. 모형은 원래 가격대의 잔량을 회복시키며 외부 가격 추세와 다른 참여자의 반응은 가정하지 않습니다.
+          - heading "첫 주문 직후 호가 잔량" [level=3] [ref=f1e48]
+          - generic [ref=f1e49]:
+            - generic [ref=f1e50]:
+              - paragraph [ref=f1e51]: 한 번에 주문
+              - generic [ref=f1e162]:
+                - generic [ref=f1e282]:
+                  - generic [ref=f1e283]: 가격
+                  - generic [ref=f1e284]: 주문 전
+                  - generic [ref=f1e285]: 주문 후
+                - generic [ref=f1e286]:
+                  - generic [ref=f1e287]: 2,690.36
+                  - generic [ref=f1e288]: "1.886"
+                  - generic [ref=f1e289]: "0.000"
+                - generic [ref=f1e290]:
+                  - generic [ref=f1e291]: 2,690.42
+                  - generic [ref=f1e292]: "0.029"
+                  - generic [ref=f1e293]: "0.000"
+                - generic [ref=f1e294]:
+                  - generic [ref=f1e295]: 2,690.47
+                  - generic [ref=f1e296]: "0.035"
+                  - generic [ref=f1e297]: "0.000"
+                - generic [ref=f1e298]:
+                  - generic [ref=f1e299]: 2,690.53
+                  - generic [ref=f1e300]: "0.035"
+                  - generic [ref=f1e301]: "0.000"
+                - generic [ref=f1e302]:
+                  - generic [ref=f1e303]: 2,690.68
+                  - generic [ref=f1e304]: "0.003"
+                  - generic [ref=f1e305]: "0.000"
+                - generic [ref=f1e306]:
+                  - generic [ref=f1e307]: 2,690.73
+                  - generic [ref=f1e308]: "0.417"
+                  - generic [ref=f1e309]: "0.000"
+                - generic [ref=f1e310]:
+                  - generic [ref=f1e311]: 2,690.74
+                  - generic [ref=f1e312]: "0.466"
+                  - generic [ref=f1e313]: "0.000"
+                - generic [ref=f1e314]:
+                  - generic [ref=f1e315]: 2,690.76
+                  - generic [ref=f1e316]: "0.437"
+                  - generic [ref=f1e317]: "0.000"
+            - generic [ref=f1e52]:
+              - paragraph [ref=f1e53]: 첫 분할 주문
+              - generic [ref=f1e199]:
+                - generic [ref=f1e318]:
+                  - generic [ref=f1e319]: 가격
+                  - generic [ref=f1e320]: 주문 전
+                  - generic [ref=f1e321]: 주문 후
+                - generic [ref=f1e322]:
+                  - generic [ref=f1e324]: 2,690.36
+                  - generic [ref=f1e325]: "1.886"
+                  - generic [ref=f1e326]: "0.886"
+                - generic [ref=f1e327]:
+                  - generic [ref=f1e329]: 2,690.42
+                  - generic [ref=f1e330]: "0.029"
+                  - generic [ref=f1e331]: "0.029"
+                - generic [ref=f1e332]:
+                  - generic [ref=f1e334]: 2,690.47
+                  - generic [ref=f1e335]: "0.035"
+                  - generic [ref=f1e336]: "0.035"
+                - generic [ref=f1e337]:
+                  - generic [ref=f1e339]: 2,690.53
+                  - generic [ref=f1e340]: "0.035"
+                  - generic [ref=f1e341]: "0.035"
+                - generic [ref=f1e342]:
+                  - generic [ref=f1e344]: 2,690.68
+                  - generic [ref=f1e345]: "0.003"
+                  - generic [ref=f1e346]: "0.003"
+                - generic [ref=f1e347]:
+                  - generic [ref=f1e349]: 2,690.73
+                  - generic [ref=f1e350]: "0.417"
+                  - generic [ref=f1e351]: "0.417"
+                - generic [ref=f1e352]:
+                  - generic [ref=f1e354]: 2,690.74
+                  - generic [ref=f1e355]: "0.466"
+                  - generic [ref=f1e356]: "0.466"
+                - generic [ref=f1e357]:
+                  - generic [ref=f1e359]: 2,690.76
+                  - generic [ref=f1e360]: "0.437"
+                  - generic [ref=f1e361]: "0.437"
+          - group [ref=f1e54]:
+            - generic "실험 가정과 해석 범위" [ref=f1e55] [cursor=pointer]
+      - region [ref=f1e56]:
+        - heading "실험의 바탕이 된 관측 결과" [level=2] [ref=f1e57]
+        - paragraph [ref=f1e58]: 100ms 체결 묶음 중 방향 비중 80% 이상·거래대금 상위 25%를 골랐습니다. 관찰 구간이 겹치지 않는 22건을 10초간 추적했습니다. 음영은 1분 군집 부트스트랩의 점별 95% 구간입니다.
+        - generic [ref=f1e59]:
+          - article [ref=f1e60]:
+            - heading "4 · 줄어든 잔량은 돌아왔는가" [level=3] [ref=f1e61]
+            - paragraph [ref=f1e62]: 초기 잔량이 20% 이상 감소한 13건 중 5건이 원래 가격 구간 잔량의 90%까지 회복했습니다. 절반 이상이 관찰창에서 회복하지 않아 중앙 회복 시간을 정하지 못했습니다.
+            - img "고정 가격 구간 잔량 회복 곡선" [ref=f1e63]:
+              - generic [ref=f1e64]: "-0.07"
+              - generic [ref=f1e65]: "0.38"
+              - generic [ref=f1e66]: "0.84"
+              - generic [ref=f1e67]: "1.29"
+              - generic [ref=f1e68]: "0.0"
+              - generic [ref=f1e69]: "2.0"
+              - generic [ref=f1e70]: "4.0"
+              - generic [ref=f1e71]: "6.0"
+              - generic [ref=f1e72]: "8.0"
+              - generic [ref=f1e73]: "10.0"
+              - generic [ref=f1e74]: 사건 전 잔량 대비 배수
+              - generic [ref=f1e75]: 경과 시간 (초)
+          - article [ref=f1e78]:
+            - heading "5 · 얇은 호가와 두꺼운 호가" [level=3] [ref=f1e79]
+            - paragraph [ref=f1e80]: 5초 가격 반응은 얇은 호가 0.762bp, 두꺼운 호가 0.688bp였습니다. 같은 방향·비슷한 규모로 짝지은 표본은 2쌍입니다. 단순 차이를 인과효과로 해석하지 않습니다.
+            - img "유동성 상태별 가격 반응" [ref=f1e81]:
+              - generic [ref=f1e82]: "-0.08"
+              - generic [ref=f1e83]: "0.45"
+              - generic [ref=f1e84]: "0.99"
+              - generic [ref=f1e85]: "1.53"
+              - generic [ref=f1e86]: "0.0"
+              - generic [ref=f1e87]: "2.0"
+              - generic [ref=f1e88]: "4.0"
+              - generic [ref=f1e89]: "6.0"
+              - generic [ref=f1e90]: "8.0"
+              - generic [ref=f1e91]: "10.0"
+              - generic [ref=f1e92]: 방향을 맞춘 mid 변화 (bp)
+              - generic [ref=f1e93]: 경과 시간 (초)
+            - generic [ref=f1e98]:
+              - generic [ref=f1e99]: 얇은 호가
+              - generic [ref=f1e100]: 두꺼운 호가
+          - article [ref=f1e101]:
+            - heading "6 · 가격 변화는 얼마나 남았는가" [level=3] [ref=f1e102]
+            - paragraph [ref=f1e103]: 평균 가격 반응은 9.4초에 0.764bp, 10초에 0.750bp였습니다. 관찰창 안에서 뚜렷한 절반 감쇠를 확인하지 못했습니다.
+            - img "큰 체결 이후 평균 가격 반응과 신뢰구간" [ref=f1e104]:
+              - generic [ref=f1e105]: "-0.07"
+              - generic [ref=f1e106]: "0.36"
+              - generic [ref=f1e107]: "0.80"
+              - generic [ref=f1e108]: "1.23"
+              - generic [ref=f1e109]: "0.0"
+              - generic [ref=f1e110]: "2.0"
+              - generic [ref=f1e111]: "4.0"
+              - generic [ref=f1e112]: "6.0"
+              - generic [ref=f1e113]: "8.0"
+              - generic [ref=f1e114]: "10.0"
+              - generic [ref=f1e115]: 방향을 맞춘 mid 변화 (bp)
+              - generic [ref=f1e116]: 경과 시간 (초)
+        - group [ref=f1e119]:
+          - generic "데이터와 분석의 한계" [ref=f1e120] [cursor=pointer]
+    - generic [ref=f1e121]: 실측 곡선은 과거 체결 후의 관찰 결과입니다. 위 가상 주문 비교는 명시한 회복 가정 아래의 계산이며 실제 주문을 전송하지 않습니다.

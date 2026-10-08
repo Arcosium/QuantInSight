@@ -1,0 +1,351 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]: ArcAI.ve
+    - generic [ref=e6]:
+      - button "+ 새 대화" [ref=e7] [cursor=pointer]
+      - button "+ 새 터미널" [ref=e8] [cursor=pointer]
+      - generic [ref=e9]:
+        - button "+ Claude" [ref=e10] [cursor=pointer]
+        - button "+ Codex" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - generic [ref=e43]:
+        - button "🖥 가마4 모델 메모 추가 ●방금" [ref=e44] [cursor=pointer]
+        - button "×" [ref=e45] [cursor=pointer]
+      - generic [ref=e67]:
+        - button "🖥 새 터미널 ●방금" [ref=e68] [cursor=pointer]
+        - button "×" [ref=e69] [cursor=pointer]
+      - generic [ref=e37]:
+        - button "🖥 ArcTrade 프로젝트 공유 및 설 ●방금" [ref=e38] [cursor=pointer]
+        - button "×" [ref=e39] [cursor=pointer]
+      - generic [ref=e40]:
+        - button "🖥 fusion_v6.zip 제출 결과 ●방금" [ref=e41] [cursor=pointer]
+        - button "×" [ref=e42] [cursor=pointer]
+    - generic [ref=e14]:
+      - button "✅ 할일" [ref=e15] [cursor=pointer]:
+        - generic [ref=e16]: ✅
+        - text: 할일
+      - button "📅 캘린더" [ref=e17] [cursor=pointer]:
+        - generic [ref=e18]: 📅
+        - text: 캘린더
+      - button "📝 메모" [ref=e19] [cursor=pointer]:
+        - generic [ref=e20]: 📝
+        - text: 메모
+      - button "🖥️ 서버" [ref=e21] [cursor=pointer]:
+        - generic [ref=e22]: 🖥️
+        - text: 서버
+      - button "📁 파일" [active] [ref=e23] [cursor=pointer]:
+        - generic [ref=e24]: 📁
+        - text: 파일
+      - button "📚 위키" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 📚
+        - text: 위키
+      - button "🖼️ 이미지" [ref=e27] [cursor=pointer]:
+        - generic [ref=e28]: 🖼️
+        - text: 이미지
+      - button "🔗 바로가기" [ref=e29] [cursor=pointer]:
+        - generic [ref=e30]: 🔗
+        - text: 바로가기
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - generic [ref=e33]:
+        - generic [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]: 🖥 새 대화
+          - button "×" [ref=e48]
+        - button "＋" [ref=e34] [cursor=pointer]
+      - button "🔔" [ref=e36] [cursor=pointer]
+    - generic [ref=e49]:
+      - generic [ref=e54]:
+        - textbox "Terminal input" [ref=e55]
+        - generic:
+          - generic:
+            - generic: ▐
+            - generic: ▛███▛█
+            - generic: Arka bot
+            - generic: v2.1.252
+          - generic:
+            - generic: ▝▜
+            - generic: █████
+            - generic: █▀
+            - generic: 무엇을
+            - generic: 도와드릴까요
+            - generic: "?"
+          - generic:
+            - generic: ▝▝ ▝▝
+            - generic: ~/projects
+          - generic: "ctx: 0%/262k"
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - button "⇧⇥ 모드" [ref=e58] [cursor=pointer]
+          - button "↑" [ref=e59] [cursor=pointer]
+          - button "↓" [ref=e60] [cursor=pointer]
+          - button "⎋" [ref=e61] [cursor=pointer]
+          - button "⛶ 전체화면" [ref=e62] [cursor=pointer]
+          - button "⏰ 예약" [ref=e63] [cursor=pointer]
+        - generic [ref=e64]:
+          - textbox "입력 후 Enter — 셸/Claude 에 그대로 전달됩니다" [ref=e65]
+          - button "전송" [ref=e66] [cursor=pointer]
+  - complementary [ref=e70]:
+    - generic [ref=e71]:
+      - button "✕" [ref=e72] [cursor=pointer]
+      - generic [ref=e73]: 파일 · Drive · GitHub
+    - generic [ref=e75]:
+      - generic [ref=e76]:
+        - button "📁 파일" [ref=e77] [cursor=pointer]
+        - button "☁ Drive" [ref=e78] [cursor=pointer]
+        - button "🐙 GitHub" [ref=e79] [cursor=pointer]
+        - button "▶ YouTube" [ref=e80] [cursor=pointer]
+      - generic [ref=e81]:
+        - generic [ref=e82]:
+          - button "~" [ref=e83] [cursor=pointer]
+          - generic [ref=e84]:
+            - generic [ref=e85]: /
+            - button "projects" [ref=e86] [cursor=pointer]
+          - button "↑ 상위" [ref=e87] [cursor=pointer]
+        - generic [ref=e88]:
+          - button "+ 폴더" [ref=e89] [cursor=pointer]
+          - button "⬆ 업로드" [ref=e90] [cursor=pointer]
+          - button "⬆ 폴더" [ref=e91] [cursor=pointer]
+          - button "📌 작업 폴더 설정" [ref=e92] [cursor=pointer]
+        - generic [ref=e93]:
+          - generic "폴더 열기" [ref=e94] [cursor=pointer]: 📁 .claude
+          - checkbox [ref=e95]
+        - generic [ref=e96]:
+          - generic "폴더 열기" [ref=e97] [cursor=pointer]: 📁 .code-review-graph
+          - checkbox [ref=e98]
+        - generic [ref=e99]:
+          - generic "폴더 열기" [ref=e100] [cursor=pointer]: 📁 .pytest_cache
+          - checkbox [ref=e101]
+        - generic [ref=e102]:
+          - generic "폴더 열기" [ref=e103] [cursor=pointer]: 📁 .remember
+          - checkbox [ref=e104]
+        - generic [ref=e105]:
+          - generic "폴더 열기" [ref=e106] [cursor=pointer]: 📁 .vscode
+          - checkbox [ref=e107]
+        - generic [ref=e108]:
+          - generic "폴더 열기" [ref=e109] [cursor=pointer]: 📁 .wiring-backup
+          - checkbox [ref=e110]
+        - generic [ref=e111]:
+          - generic "폴더 열기" [ref=e112] [cursor=pointer]: 📁 AI말평_경진대회
+          - checkbox [ref=e113]
+        - generic [ref=e114]:
+          - generic "폴더 열기" [ref=e115] [cursor=pointer]: 📁 AI활용사례_공모전
+          - checkbox [ref=e116]
+        - generic [ref=e117]:
+          - generic "폴더 열기" [ref=e118] [cursor=pointer]: 📁 api
+          - checkbox [ref=e119]
+        - generic [ref=e120]:
+          - generic "폴더 열기" [ref=e121] [cursor=pointer]: 📁 ArachneControl
+          - checkbox [ref=e122]
+        - generic [ref=e123]:
+          - generic "폴더 열기" [ref=e124] [cursor=pointer]: 📁 ArcAI.ve
+          - checkbox [ref=e125]
+        - generic [ref=e126]:
+          - generic "폴더 열기" [ref=e127] [cursor=pointer]: 📁 Arcosium
+          - checkbox [ref=e128]
+        - generic [ref=e129]:
+          - generic "폴더 열기" [ref=e130] [cursor=pointer]: 📁 ArcTrade
+          - checkbox [ref=e131]
+        - generic [ref=e132]:
+          - generic "폴더 열기" [ref=e133] [cursor=pointer]: 📁 arkinsight
+          - checkbox [ref=e134]
+        - generic [ref=e135]:
+          - generic "폴더 열기" [ref=e136] [cursor=pointer]: 📁 autozoom
+          - checkbox [ref=e137]
+        - generic [ref=e138]:
+          - generic "폴더 열기" [ref=e139] [cursor=pointer]: 📁 BDAI_공모전
+          - checkbox [ref=e140]
+        - generic [ref=e141]:
+          - generic "폴더 열기" [ref=e142] [cursor=pointer]: 📁 CFA_Study
+          - checkbox [ref=e143]
+        - generic [ref=e144]:
+          - generic "폴더 열기" [ref=e145] [cursor=pointer]: 📁 claw
+          - checkbox [ref=e146]
+        - generic [ref=e147]:
+          - generic "폴더 열기" [ref=e148] [cursor=pointer]: 📁 claw-critic
+          - checkbox [ref=e149]
+        - generic [ref=e150]:
+          - generic "폴더 열기" [ref=e151] [cursor=pointer]: 📁 Compliance_Automation
+          - checkbox [ref=e152]
+        - generic [ref=e153]:
+          - generic "폴더 열기" [ref=e154] [cursor=pointer]: 📁 couple
+          - checkbox [ref=e155]
+        - generic [ref=e156]:
+          - generic "폴더 열기" [ref=e157] [cursor=pointer]: 📁 CryptoBars
+          - checkbox [ref=e158]
+        - generic [ref=e159]:
+          - generic "폴더 열기" [ref=e160] [cursor=pointer]: 📁 DX_Challenge
+          - checkbox [ref=e161]
+        - generic [ref=e162]:
+          - generic "폴더 열기" [ref=e163] [cursor=pointer]: 📁 Files
+          - checkbox [ref=e164]
+        - generic [ref=e165]:
+          - generic "폴더 열기" [ref=e166] [cursor=pointer]: 📁 GenomicWQB
+          - checkbox [ref=e167]
+        - generic [ref=e168]:
+          - generic "폴더 열기" [ref=e169] [cursor=pointer]: 📁 HIMEC_AI공모전
+          - checkbox [ref=e170]
+        - generic [ref=e171]:
+          - generic "폴더 열기" [ref=e172] [cursor=pointer]: 📁 HYFE_QTPA
+          - checkbox [ref=e173]
+        - generic [ref=e174]:
+          - generic "폴더 열기" [ref=e175] [cursor=pointer]: 📁 ICT_Challenge
+          - checkbox [ref=e176]
+        - generic [ref=e177]:
+          - generic "폴더 열기" [ref=e178] [cursor=pointer]: 📁 ICT융합_공모전
+          - checkbox [ref=e179]
+        - generic [ref=e180]:
+          - generic "폴더 열기" [ref=e181] [cursor=pointer]: 📁 imggen
+          - checkbox [ref=e182]
+        - generic [ref=e183]:
+          - generic "폴더 열기" [ref=e184] [cursor=pointer]: 📁 imnotahuman
+          - checkbox [ref=e185]
+        - generic [ref=e186]:
+          - generic "폴더 열기" [ref=e187] [cursor=pointer]: 📁 KBAI_공모전
+          - checkbox [ref=e188]
+        - generic [ref=e189]:
+          - generic "폴더 열기" [ref=e190] [cursor=pointer]: 📁 kimhyunho
+          - checkbox [ref=e191]
+        - generic [ref=e192]:
+          - generic "폴더 열기" [ref=e193] [cursor=pointer]: 📁 lib
+          - checkbox [ref=e194]
+        - generic [ref=e195]:
+          - generic "폴더 열기" [ref=e196] [cursor=pointer]: 📁 Life_Idea_Challenge
+          - checkbox [ref=e197]
+        - generic [ref=e198]:
+          - generic "폴더 열기" [ref=e199] [cursor=pointer]: 📁 LLM_alignment
+          - checkbox [ref=e200]
+        - generic [ref=e201]:
+          - generic "폴더 열기" [ref=e202] [cursor=pointer]: 📁 MABC_공모전
+          - checkbox [ref=e203]
+        - generic [ref=e204]:
+          - generic "폴더 열기" [ref=e205] [cursor=pointer]: 📁 mtsimulator
+          - checkbox [ref=e206]
+        - generic [ref=e207]:
+          - generic "폴더 열기" [ref=e208] [cursor=pointer]: 📁 MultiEX
+          - checkbox [ref=e209]
+        - generic [ref=e210]:
+          - generic "폴더 열기" [ref=e211] [cursor=pointer]: 📁 passcfa
+          - checkbox [ref=e212]
+        - generic [ref=e213]:
+          - generic "폴더 열기" [ref=e214] [cursor=pointer]: 📁 poyong
+          - checkbox [ref=e215]
+        - generic [ref=e216]:
+          - generic "폴더 열기" [ref=e217] [cursor=pointer]: 📁 QuantInSight
+          - checkbox [ref=e218]
+        - generic [ref=e219]:
+          - generic "폴더 열기" [ref=e220] [cursor=pointer]: 📁 stat_arb
+          - checkbox [ref=e221]
+        - generic [ref=e222]:
+          - generic "폴더 열기" [ref=e223] [cursor=pointer]: 📁 stressball
+          - checkbox [ref=e224]
+        - generic [ref=e225]:
+          - generic "폴더 열기" [ref=e226] [cursor=pointer]: 📁 tripcast
+          - checkbox [ref=e227]
+        - generic [ref=e228]:
+          - generic "폴더 열기" [ref=e229] [cursor=pointer]: 📁 vcnews
+          - checkbox [ref=e230]
+        - generic [ref=e231]:
+          - generic "폴더 열기" [ref=e232] [cursor=pointer]: 📁 youtube
+          - checkbox [ref=e233]
+        - generic [ref=e234]:
+          - generic "폴더 열기" [ref=e235] [cursor=pointer]: 📁 각종 자소서
+          - checkbox [ref=e236]
+        - generic [ref=e237]:
+          - generic "폴더 열기" [ref=e238] [cursor=pointer]: 📁 경상북도_AX경진대회
+          - checkbox [ref=e239]
+        - generic [ref=e240]:
+          - generic "폴더 열기" [ref=e241] [cursor=pointer]: 📁 공주시_관광공모전
+          - checkbox [ref=e242]
+        - generic [ref=e243]:
+          - generic "폴더 열기" [ref=e244] [cursor=pointer]: 📁 교통문제_공모전
+          - checkbox [ref=e245]
+        - generic [ref=e246]:
+          - generic "폴더 열기" [ref=e247] [cursor=pointer]: 📁 그린리모델링_해커톤
+          - checkbox [ref=e248]
+        - generic [ref=e249]:
+          - generic "폴더 열기" [ref=e250] [cursor=pointer]: 📁 금융AI_Challenge
+          - checkbox [ref=e251]
+        - generic [ref=e252]:
+          - generic "폴더 열기" [ref=e253] [cursor=pointer]: 📁 기본사회_공모전
+          - checkbox [ref=e254]
+        - generic [ref=e255]:
+          - generic "폴더 열기" [ref=e256] [cursor=pointer]: 📁 나라장터_경진대회
+          - checkbox [ref=e257]
+        - generic [ref=e258]:
+          - generic "폴더 열기" [ref=e259] [cursor=pointer]: 📁 당진시_AI아이디어공모
+          - checkbox [ref=e260]
+        - generic [ref=e261]:
+          - generic "폴더 열기" [ref=e262] [cursor=pointer]: 📁 대구시_AI경진대회
+          - checkbox [ref=e263]
+        - generic [ref=e264]:
+          - generic "폴더 열기" [ref=e265] [cursor=pointer]: 📁 딥보이스_경진대회
+          - checkbox [ref=e266]
+        - generic [ref=e267]:
+          - generic "폴더 열기" [ref=e268] [cursor=pointer]: 📁 미래에셋_공모전
+          - checkbox [ref=e269]
+        - generic [ref=e270]:
+          - generic "폴더 열기" [ref=e271] [cursor=pointer]: 📁 보이스피싱_공모전
+          - checkbox [ref=e272]
+        - generic [ref=e273]:
+          - generic "폴더 열기" [ref=e274] [cursor=pointer]: 📁 식품안전_경진대회
+          - checkbox [ref=e275]
+        - generic [ref=e276]:
+          - generic "폴더 열기" [ref=e277] [cursor=pointer]: 📁 안양시_데이터경진대회
+          - checkbox [ref=e278]
+        - generic [ref=e279]:
+          - generic "폴더 열기" [ref=e280] [cursor=pointer]: 📁 예보공_공모전
+          - checkbox [ref=e281]
+        - generic [ref=e282]:
+          - generic "폴더 열기" [ref=e283] [cursor=pointer]: 📁 원티드AI_Championship
+          - checkbox [ref=e284]
+        - generic [ref=e285]:
+          - generic "폴더 열기" [ref=e286] [cursor=pointer]: 📁 자원봉사_아이디어_공모전
+          - checkbox [ref=e287]
+        - generic [ref=e288]:
+          - generic "폴더 열기" [ref=e289] [cursor=pointer]: 📁 제조데이터_경진대회
+          - checkbox [ref=e290]
+        - generic [ref=e291]:
+          - generic "폴더 열기" [ref=e292] [cursor=pointer]: 📁 진도군_정책제안공모전
+          - checkbox [ref=e293]
+        - generic [ref=e294]:
+          - generic "폴더 열기" [ref=e295] [cursor=pointer]: 📁 창업진흥원_공모전
+          - checkbox [ref=e296]
+        - generic [ref=e297]:
+          - generic "폴더 열기" [ref=e298] [cursor=pointer]: 📁 풍력발전량_공모전
+          - checkbox [ref=e299]
+        - generic [ref=e300]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e301] [cursor=pointer]:
+            - text: 📄 .env
+            - generic [ref=e302]: 4.6 KB
+          - checkbox [ref=e303]
+        - generic [ref=e304]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e305] [cursor=pointer]:
+            - text: 📄 .gitignore
+            - generic [ref=e306]: 1.5 KB
+          - checkbox [ref=e307]
+        - generic [ref=e308]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e309] [cursor=pointer]:
+            - text: 📄 AGENTS.md
+            - generic [ref=e310]: 4.8 KB
+          - checkbox [ref=e311]
+        - generic [ref=e312]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e313] [cursor=pointer]:
+            - text: 📄 CLAUDE.md
+            - generic [ref=e314]: 3.1 KB
+          - checkbox [ref=e315]
+        - generic [ref=e316]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e317] [cursor=pointer]:
+            - text: 📄 DESIGN.md
+            - generic [ref=e318]: 6.1 KB
+          - checkbox [ref=e319]
+        - generic [ref=e320]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e321] [cursor=pointer]:
+            - text: 📄 PORTFOLIO.md
+            - generic [ref=e322]: 3.1 KB
+          - checkbox [ref=e323]
+        - generic [ref=e324]:
+          - generic "로컬에서 열기 (실패 시 미리보기) · 우클릭=메뉴" [ref=e325] [cursor=pointer]:
+            - text: 📄 WIRING.md
+            - generic [ref=e326]: 16.6 KB
+          - checkbox [ref=e327]
+        - button "🔌 로컬 에이전트 · 기기 토큰 ▸" [ref=e329] [cursor=pointer]

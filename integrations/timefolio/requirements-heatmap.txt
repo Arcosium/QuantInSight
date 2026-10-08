@@ -1,0 +1,5 @@
+# Optional dependencies for the isolated Timefolio heatmap study.
+# Exact versions of the complete run are recorded in its environment.json.
+-r requirements.txt
+lightgbm==4.7.0
+pykrx==1.2.8

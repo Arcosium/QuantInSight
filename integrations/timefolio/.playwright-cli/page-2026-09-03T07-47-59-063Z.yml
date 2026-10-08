@@ -1,0 +1,40 @@
+- generic [ref=e1]:
+  - link "본문으로 이동" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: ArcTrade
+        - generic [ref=e7]: 자연어로 전략을 만들고 같은 화면에서 검증한 뒤 Auto-folio에 연결하는 한국 주식 연구 원장
+      - generic [ref=e8]: KST 16:47:58
+    - tablist "주요 화면" [ref=e9]:
+      - tab "운용 현황" [ref=e10] [cursor=pointer]
+      - tab "전략 연구실" [active] [selected] [ref=e11] [cursor=pointer]
+      - tab "모델 실험 기록" [ref=e12] [cursor=pointer]
+    - main [ref=e13]:
+      - tabpanel [ref=e86]:
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - heading "자연어 전략 설계" [level=2] [ref=e89]
+            - generic [ref=e90]: 생성 · 백테스트 · 운용
+          - generic [ref=e91]:
+            - generic [ref=e92]: 재무, 수급, 이동평균, RSI, MACD, 캔들, 공시 조건을 AND·OR와 괄호로 자유롭게 조합할 수 있습니다. 단순한 두 단계 규칙으로 제한하지 않습니다.
+            - generic [ref=e93]:
+              - generic [ref=e94]:
+                - generic [ref=e95]: AI 제공사
+                - combobox "AI 제공사" [ref=e96]:
+                  - option "자동 선택" [selected]
+                  - option "OpenAI"
+                  - option "Gemini"
+                  - option "DeepSeek"
+                  - option "로컬 OpenAI 호환"
+              - generic [ref=e97]:
+                - generic [ref=e98]: 전략 아이디어
+                - textbox "전략 아이디어" [ref=e99]:
+                  - /placeholder: "예: PER 12 미만, ROE 10 초과인 종목 중 기관과 외국인이 함께 순매수하고 20일선 위에서 거래될 때 매수. RSI가 70을 넘거나 데드크로스가 나오면 매도. 변동성 역비중, 거래비용 포함, 최근 3년 검증."
+                - generic [ref=e100]: API 키는 서버의 .env에서만 읽습니다. 브라우저에는 저장하지 않습니다.
+            - generic [ref=e101]:
+              - button "AI로 전략 생성" [ref=e102] [cursor=pointer]
+              - button "백테스트" [disabled] [ref=e103]
+              - button "이 전략으로 매매하기" [disabled] [ref=e104]
+    - paragraph [ref=e85]: ArcTrade는 연구 도구이며 투자 자문이 아닙니다. 공개 배포본의 실주문 기본값은 꺼져 있습니다.

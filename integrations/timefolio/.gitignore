@@ -1,0 +1,45 @@
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*token*
+*secret*
+
+# Runtime data (kept outside the repository)
+data
+quant/Memories
+Auto_folio/data
+*.db
+*.db-*
+*.sqlite*
+*.jsonl
+*.log
+*.parquet
+state/
+profiles/
+strategy_archives/
+
+# Python and tools
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Browser sessions and captures
+.playwright-cli/
+playwright-report/
+test-results/
+*.png
+/.code-review-graph
+
+/minute_data
+/impact_data
+
+# Private research deliverables and generated reports
+/_workspace/

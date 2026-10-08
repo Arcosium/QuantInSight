@@ -1,0 +1,15 @@
+- generic [active] [ref=f3e1]:
+  - banner [ref=f3e2]:
+    - link "ArcTrade" [ref=f3e3] [cursor=pointer]:
+      - /url: /
+    - navigation [ref=f3e4]:
+      - link "본인 주문 관측" [ref=f3e5] [cursor=pointer]:
+        - /url: /static/impact-review.html?v=20260928-2
+      - link "가상 주문 비교" [ref=f3e6] [cursor=pointer]:
+        - /url: /static/impact-lab.html?v=20260928-2
+  - main [ref=f3e7]:
+    - heading "관찰 기간을 늘려, 가격 반응 다시 보기" [level=1] [ref=f3e8]: 관찰 기간을 늘려,가격 반응 다시 보기
+    - paragraph [ref=f3e9]: 호가가 소모된 뒤 얼마나 다시 채워지는지, 시장 상태에 따라 가격 반응이 달라지는지, 그 반응이 5분 뒤에도 남는지 살펴봤습니다.
+    - paragraph [ref=f3e10]: 확대 분석 자료를 불러오는 중입니다.
+    - alert
+    - generic [ref=f3e11]: HYFE 9.28 · ETHUSDT 현물 공개 체결·호가 관찰 · 확장 결과는 기존 가상 주문 모형의 회복 파라미터에 자동 대입하지 않습니다.

@@ -1,22 +1,4 @@
-# ArQuant v1.0 — 런타임 의존성 (핀 고정)
-# 실거래 시스템이므로 라이브러리 자동 업그레이드로 주문 경로가 조용히 깨지는 것을
-# 막기 위해 정확한 버전으로 고정한다. 업그레이드는 의도적으로, 테스트(`pytest`) 통과 후에만.
-# 갱신 방법:  python3.11 -m pip install -U <pkg> && python3.11 -m pytest && pip freeze 로 갱신
-aiohttp==3.13.3
-argon2-cffi==25.1.0
-beautifulsoup4==4.14.3
-cryptography==47.0.0
-fastapi==0.136.1
-httpx==0.28.1
-numpy==2.4.4
-pandas==3.0.3
-pillow==12.1.1
-playwright==1.59.0
-pydantic==2.12.5
-python-dotenv==1.2.1
-python-multipart==0.0.27
-requests==2.32.5
-starlette==1.0.0
-uvicorn==0.46.0
-
-PyJWT[crypto]>=2.10,<3
+fastapi
+uvicorn
+numpy
+scipy

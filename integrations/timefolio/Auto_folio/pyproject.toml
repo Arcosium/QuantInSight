@@ -1,0 +1,17 @@
+[project]
+name = "auto-folio"
+version = "0.1.0"
+description = "Timefolio automation shell using QuantInSight's KR mock-account trading rules"
+requires-python = ">=3.11"
+dependencies = [
+  "playwright>=1.50",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

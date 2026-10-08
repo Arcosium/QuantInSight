@@ -1,0 +1,194 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]: ArcAI.ve
+    - generic [ref=e6]:
+      - button "+ 새 대화" [ref=e7] [cursor=pointer]
+      - button "+ 새 터미널" [ref=e8] [cursor=pointer]
+      - generic [ref=e9]:
+        - button "+ Claude" [ref=e10] [cursor=pointer]
+        - button "+ Codex" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - generic [ref=e67]:
+        - button "🖥 새 터미널 ●방금" [ref=e68] [cursor=pointer]
+        - button "×" [ref=e69] [cursor=pointer]
+      - generic [ref=e37]:
+        - button "🖥 ArcTrade 프로젝트 공유 및 설 ●방금" [ref=e38] [cursor=pointer]
+        - button "×" [ref=e39] [cursor=pointer]
+      - generic [ref=e43]:
+        - button "🖥 가마4 모델 메모 추가 ●방금" [ref=e44] [cursor=pointer]
+        - button "×" [ref=e45] [cursor=pointer]
+      - generic [ref=e40]:
+        - button "🖥 fusion_v6.zip 제출 결과 ●방금" [ref=e41] [cursor=pointer]
+        - button "×" [ref=e42] [cursor=pointer]
+    - generic [ref=e14]:
+      - button "✅ 할일" [ref=e15] [cursor=pointer]:
+        - generic [ref=e16]: ✅
+        - text: 할일
+      - button "📅 캘린더" [ref=e17] [cursor=pointer]:
+        - generic [ref=e18]: 📅
+        - text: 캘린더
+      - button "📝 메모" [ref=e19] [cursor=pointer]:
+        - generic [ref=e20]: 📝
+        - text: 메모
+      - button "🖥️ 서버" [ref=e21] [cursor=pointer]:
+        - generic [ref=e22]: 🖥️
+        - text: 서버
+      - button "📁 파일" [ref=e23] [cursor=pointer]:
+        - generic [ref=e24]: 📁
+        - text: 파일
+      - button "📚 위키" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 📚
+        - text: 위키
+      - button "🖼️ 이미지" [ref=e27] [cursor=pointer]:
+        - generic [ref=e28]: 🖼️
+        - text: 이미지
+      - button "🔗 바로가기" [ref=e29] [cursor=pointer]:
+        - generic [ref=e30]: 🔗
+        - text: 바로가기
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - generic [ref=e33]:
+        - generic [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]: 🖥 새 대화
+          - button "×" [ref=e48]
+        - button "＋" [ref=e34] [cursor=pointer]
+      - button "🔔" [ref=e36] [cursor=pointer]
+    - generic [ref=e49]:
+      - generic [ref=e54]:
+        - textbox "Terminal input" [ref=e55]
+        - generic:
+          - generic:
+            - generic: ▐
+            - generic: ▛███▛█
+            - generic: Arka bot
+            - generic: v2.1.252
+          - generic:
+            - generic: ▝▜
+            - generic: █████
+            - generic: █▀
+            - generic: 무엇을
+            - generic: 도와드릴까요
+            - generic: "?"
+          - generic:
+            - generic: ▝▝ ▝▝
+            - generic: ~/projects
+          - generic: "ctx: 0%/262k"
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - button "⇧⇥ 모드" [ref=e58] [cursor=pointer]
+          - button "↑" [ref=e59] [cursor=pointer]
+          - button "↓" [ref=e60] [cursor=pointer]
+          - button "⎋" [ref=e61] [cursor=pointer]
+          - button "⛶ 전체화면" [ref=e62] [cursor=pointer]
+          - button "⏰ 예약" [ref=e63] [cursor=pointer]
+        - generic [ref=e64]:
+          - textbox "입력 후 Enter — 셸/Claude 에 그대로 전달됩니다" [ref=e65]
+          - button "전송" [ref=e66] [cursor=pointer]
+  - complementary [ref=e70]:
+    - generic [ref=e71]:
+      - button "✕" [ref=e72] [cursor=pointer]
+      - generic [ref=e73]: 파일 · Drive · GitHub
+    - generic [ref=e75]:
+      - generic [ref=e76]:
+        - button "📁 파일" [ref=e77] [cursor=pointer]
+        - button "☁ Drive" [ref=e78] [cursor=pointer]
+        - button "🐙 GitHub" [active] [ref=e79] [cursor=pointer]
+        - button "▶ YouTube" [ref=e80] [cursor=pointer]
+      - generic [ref=e330]:
+        - generic [ref=e331]:
+          - generic [ref=e332]: 매일 1회 projects 전체가 자동 업로드됩니다 — 비밀·개인데이터는 자동 제외/마스킹, 새 repo 는 private. 완료되면 알림(🔔)이 옵니다.
+          - generic [ref=e333]:
+            - generic [ref=e334]: 매일 07:00 · 마지막 9/3 07:03
+            - button "🐙 지금 업로드" [ref=e335] [cursor=pointer]
+          - generic [ref=e336]: 업로드 2 파일(redact 0), 미push 커밋 2개 push, 생성 0개, 보호 3건, 차단 0건, 오탐해제 1건.
+        - generic [ref=e337]: 저장소 공개 설정 (토글 → 다음 사이클 반영)
+        - generic [ref=e338]:
+          - generic [ref=e339]: Arcosium/ArcTrade
+          - button "🔒 private" [ref=e340] [cursor=pointer]
+        - generic [ref=e341]:
+          - generic [ref=e342]: Arcosium/youtube
+          - button "🔒 private" [ref=e343] [cursor=pointer]
+        - generic [ref=e344]:
+          - generic [ref=e345]: Arcosium/GenomicWQB
+          - button "🌐 public" [ref=e346] [cursor=pointer]
+        - generic [ref=e347]:
+          - generic [ref=e348]: Arcosium/ArcAI.ve
+          - button "🔒 private" [ref=e349] [cursor=pointer]
+        - generic [ref=e350]:
+          - generic [ref=e351]: Arcosium/HYFE_QTPA
+          - button "🌐 public" [ref=e352] [cursor=pointer]
+        - generic [ref=e353]:
+          - generic [ref=e354]: Arcosium/climate-card-did
+          - button "🌐 public" [ref=e355] [cursor=pointer]
+        - generic [ref=e356]:
+          - generic [ref=e357]: Arcosium/QuantInSight
+          - button "🌐 public" [ref=e358] [cursor=pointer]
+        - generic [ref=e359]:
+          - generic [ref=e360]: Arcosium/tripcast
+          - button "🔒 private" [ref=e361] [cursor=pointer]
+        - generic [ref=e362]:
+          - generic [ref=e363]: Arcosium/poyong
+          - button "🔒 private" [ref=e364] [cursor=pointer]
+        - generic [ref=e365]:
+          - generic [ref=e366]: Arcosium/vcnews
+          - button "🌐 public" [ref=e367] [cursor=pointer]
+        - generic [ref=e368]:
+          - generic [ref=e369]: Arcosium/arkinsight
+          - button "🌐 public" [ref=e370] [cursor=pointer]
+        - generic [ref=e371]:
+          - generic [ref=e372]: Arcosium/autozoom
+          - button "🌐 public" [ref=e373] [cursor=pointer]
+        - generic [ref=e374]:
+          - generic [ref=e375]: Arcosium/claw-critic
+          - button "🔒 private" [ref=e376] [cursor=pointer]
+        - generic [ref=e377]:
+          - generic [ref=e378]: Arcosium/claw
+          - button "🔒 private" [ref=e379] [cursor=pointer]
+        - generic [ref=e380]:
+          - generic [ref=e381]: Arcosium/LLM_alignment
+          - button "🔒 private" [ref=e382] [cursor=pointer]
+        - generic [ref=e383]:
+          - generic [ref=e384]: Arcosium/KBAI_---
+          - button "🔒 private" [ref=e385] [cursor=pointer]
+        - generic [ref=e386]:
+          - generic [ref=e387]: Arcosium/CFA_Study
+          - button "🔒 private" [ref=e388] [cursor=pointer]
+        - generic [ref=e389]:
+          - generic [ref=e390]: Arcosium/Arcosium
+          - button "🌐 public" [ref=e391] [cursor=pointer]
+        - generic [ref=e392]:
+          - generic [ref=e393]: Arcosium/BDAI-Contest
+          - button "🔒 private" [ref=e394] [cursor=pointer]
+        - generic [ref=e395]:
+          - generic [ref=e396]: Arcosium/kimhyunho
+          - button "🔒 private" [ref=e397] [cursor=pointer]
+        - generic [ref=e398]:
+          - generic [ref=e399]: Arcosium/imggen
+          - button "🌐 public" [ref=e400] [cursor=pointer]
+        - generic [ref=e401]:
+          - generic [ref=e402]: Arcosium/CryptoBars
+          - button "🌐 public" [ref=e403] [cursor=pointer]
+        - generic [ref=e404]:
+          - generic [ref=e405]: Arcosium/mtsimulator
+          - button "🌐 public" [ref=e406] [cursor=pointer]
+        - generic [ref=e407]:
+          - generic [ref=e408]: Arcosium/couple
+          - button "🌐 public" [ref=e409] [cursor=pointer]
+        - generic [ref=e410]:
+          - generic [ref=e411]: Arcosium/lib
+          - button "🔒 private" [ref=e412] [cursor=pointer]
+        - generic [ref=e413]:
+          - generic [ref=e414]: Arcosium/krxsimul
+          - button "🌐 public" [ref=e415] [cursor=pointer]
+        - generic [ref=e416]:
+          - generic [ref=e417]: Arcosium/Files
+          - button "🔒 private" [ref=e418] [cursor=pointer]
+        - generic [ref=e419]:
+          - generic [ref=e420]: Arcosium/Lag_Trading
+          - button "🌐 public" [ref=e421] [cursor=pointer]
+        - generic [ref=e422]:
+          - generic [ref=e423]: Arcosium/voice2policy-reproducibility
+          - button "🌐 public" [ref=e424] [cursor=pointer]
+        - generic [ref=e425]:
+          - generic [ref=e426]: Arcosium/Pay-Link-Service
+          - button "🌐 public" [ref=e427] [cursor=pointer]

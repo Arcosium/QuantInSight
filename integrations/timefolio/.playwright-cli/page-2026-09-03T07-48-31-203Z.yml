@@ -1,0 +1,86 @@
+- generic [active] [ref=e1]:
+  - link "본문으로 이동" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: ArcTrade
+        - generic [ref=e7]: 자연어로 전략을 만들고 같은 화면에서 검증한 뒤 Auto-folio에 연결하는 한국 주식 연구 원장
+      - generic [ref=e8]: KST --:--:--
+    - tablist "주요 화면" [ref=e9]:
+      - tab "운용 현황" [selected] [ref=e10] [cursor=pointer]
+      - tab "전략 연구실" [ref=e11] [cursor=pointer]
+      - tab "모델 실험 기록" [ref=e12] [cursor=pointer]
+    - main [ref=e13]:
+      - tabpanel [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - generic [ref=e17]: ACTIVE STRATEGY
+            - generic [ref=e18]: 없음
+          - generic [ref=e19]:
+            - generic [ref=e20]: RUNNING TIME
+            - generic [ref=e21]: 0.0h
+          - generic [ref=e22]:
+            - generic [ref=e23]: STRATEGY RETURN
+            - generic [ref=e24]: 0.00%
+          - generic [ref=e25]:
+            - generic [ref=e26]: SIGNALS
+            - generic [ref=e27]: "0"
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - generic [ref=e30]:
+              - heading "매매 신호 로그" [level=2] [ref=e31]
+              - generic [ref=e32]: 전략 교체 시 보관 후 초기화
+            - generic [ref=e33]:
+              - table [ref=e34]:
+                - rowgroup [ref=e35]:
+                  - row [ref=e36]:
+                    - columnheader "시각" [ref=e37]
+                    - columnheader "구분" [ref=e38]
+                    - columnheader "종목" [ref=e39]
+                    - columnheader "가격" [ref=e40]
+                    - columnheader "수익률" [ref=e41]
+                    - columnheader "근거" [ref=e42]
+                - rowgroup
+              - generic [ref=e43]: 아직 기록된 신호가 없습니다.
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - heading "Auto-folio" [level=2] [ref=e47]
+                - button "사이클 실행" [ref=e48] [cursor=pointer]
+              - generic [ref=e49]:
+                - generic [ref=e50]:
+                  - generic [ref=e51]: 모드 timefolio_live
+                  - generic [ref=e52]: 총평가 769,257,900원
+                  - generic [ref=e53]:
+                    - text: 누적
+                    - generic [ref=e54]: "-23.07%"
+                - paragraph [ref=e55]: 타임폴리오의 실제 가격과 주문 원장은 전략을 바꿔도 초기화하지 않습니다.
+              - table [ref=e57]:
+                - rowgroup [ref=e58]:
+                  - row [ref=e59]:
+                    - columnheader "종목" [ref=e60]
+                    - columnheader "수량" [ref=e61]
+                    - columnheader "현재가" [ref=e62]
+                    - columnheader "손익" [ref=e63]
+                - rowgroup [ref=e64]:
+                  - row [ref=e65]:
+                    - cell "047050" [ref=e66]
+                    - cell "1,293" [ref=e67]
+                    - cell "55,500" [ref=e68]
+                    - cell "+5.16%" [ref=e69]
+                  - row [ref=e70]:
+                    - cell "086280" [ref=e71]
+                    - cell "349" [ref=e72]
+                    - cell "202,000" [ref=e73]
+                    - cell "-0.55%" [ref=e74]
+            - generic [ref=e75]:
+              - heading "연결 상태" [level=2] [ref=e77]
+              - generic [ref=e78]:
+                - generic [ref=e79]:
+                  - generic [ref=e80]: openai · 미설정
+                  - generic [ref=e81]: gemini · 미설정
+                  - generic [ref=e82]: deepseek · 미설정
+                  - generic [ref=e83]: local · 준비됨
+                - paragraph [ref=e84]: 타임폴리오 계정 설정됨 · 실주문 켜짐
+    - paragraph [ref=e85]: ArcTrade는 연구 도구이며 투자 자문이 아닙니다. 공개 배포본의 실주문 기본값은 꺼져 있습니다.

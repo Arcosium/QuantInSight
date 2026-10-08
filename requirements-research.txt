@@ -1,4 +1,0 @@
-# Optional research CLI only; trading-service dependencies are unchanged.
-statsmodels==0.14.6
-scipy==1.17.1
-matplotlib==3.10.9
