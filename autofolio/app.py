@@ -56,7 +56,11 @@ def leaderboard(cohort: str|None=None):
 
 
 def selected_book(identity,phase):
-    try:return strategy_case(identity,phase)
+    try:
+        summary,case=strategy_case(identity,phase)
+        from .period import accepts
+        if not accepts(summary):raise HTTPException(410,'현재 36개월 평가 기간의 전략이 아닙니다.')
+        return summary,case
     except KeyError:raise HTTPException(404,'전략을 찾을 수 없습니다.')
     except ValueError:raise HTTPException(400,'시작일을 확인해 주세요.')
     except (OSError,TypeError,IndexError):raise HTTPException(409,'원본 결과를 확인할 수 없습니다.')
@@ -72,7 +76,7 @@ def period_rows(case,months):
 
 
 @app.get('/api/strategy/{identity}')
-def detail(identity: str,phase:int=Query(0,ge=0),months:int=Query(0,ge=0,le=120),symbol:str=Query('',max_length=12)):
+def detail(identity: str,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36),symbol:str=Query('',max_length=12)):
     summary,case=selected_book(identity,phase)
     selected=period_rows(case,months)
     if not selected:raise HTTPException(409,'이 기간에 계좌 장부가 없습니다.')
@@ -98,7 +102,7 @@ def detail(identity: str,phase:int=Query(0,ge=0),months:int=Query(0,ge=0,le=120)
 
 
 @app.get('/api/strategy/{identity}/trades')
-def transactions(identity: str,phase:int=Query(0,ge=0),months:int=Query(0,ge=0,le=120),
+def transactions(identity: str,phase:int=Query(0,ge=0),months:int=Query(36,ge=36,le=36),
                  symbol:str=Query('',max_length=12),offset:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
     summary,case=selected_book(identity,phase)
     selected=period_rows(case,months)

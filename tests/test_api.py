@@ -32,6 +32,7 @@ class SiteTests(unittest.TestCase):
 
     def test_routes_and_retired_archive(self):
         self.assertEqual(self.client.get('/api/archive').status_code,404)
+        self.assertEqual(self.client.get('/api/strategy/unknown?months=33').status_code,422)
         self.assertEqual(self.client.get('/api/accounts/unknown').status_code,404)
         self.assertEqual(self.client.get('/api/logs?after=-1').status_code,422)
         self.assertEqual(self.client.get('/static/../../vault/secrets_api_keys.txt').status_code,404)
