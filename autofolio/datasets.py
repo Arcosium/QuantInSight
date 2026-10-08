@@ -142,7 +142,6 @@ def source(name,path,reader,note=''):
 
 
 def inventory():
-    from .research import SOURCES
     vault=HOME/'vault'; bars=vault/'CryptoBars/data'; daily=vault/'QuantInSight/data'
     specs=[
       ('한국 분봉','KRX 1분 시세 · 현재 수집과 과거 OHLCV',[
@@ -160,10 +159,6 @@ def inventory():
       ('뉴스','증권 뉴스 · RSS',[('뉴스 수집 기록',HOME/'projects/lib/data/arcnews.db',lambda p:sqlite_period(p,'articles','collected_at'),'발행일 형식이 달라 수집일 기준으로 표시')]),
       ('공시·재무','DART 기업 재무 · 회계연도 기준',[('기업 재무',ROOT/'integrations/timefolio/quant/financials_5y.csv',financial_period,'일별 관측이 아닌 회계연도 범위')]),
       ('한국 일봉','한국 주식 수정 주가·거래량', [('한국 보유 일봉',daily,lambda p:csv_folder_period(p,'daily_[0-9]*.csv'),'')]),
-      ('타임폴리오 한국주식 학습·평가 패널','일봉을 묶은 모델 학습 입력 · 가격·거래량·이미지·수익률 정답',[
-       ('확정 학습 패널',vault/'ArcTrade/timefolio_cnn_4y/20261002_v1/context_full_w20_h5_v1/dataset',panel_period,'원천 시세로 만든 파생 입력. 보유 기간과 전략의 최근 36개월 평가 기간은 다름')]),
-      ('학술제 한국주식 검증 시세','학술제 한국주식 연구 · 원본 시세 대조·검증 패널', [('학술제 한국 검증 원본',SOURCES['kr'],parquet_period,'보유 기간이며 최근 36개월 평가 가능 여부는 연구 화면에서 확인')]),
-      ('학술제 미국주식 검증 시세','학술제 미국주식 연구 · 원본 시세 대조·검증 패널', [('학술제 미국 검증 원본',SOURCES['us'],parquet_period,'보유 기간이며 최근 36개월 평가 가능 여부는 연구 화면에서 확인')]),
       ('시장 분석','종목·수급 사건 분석', [('시장 분석 사건',vault/'HYFE/9.28/market_data/analysis-20260928-revision-03',lambda p:union([csv_period(p/'same_price_events.csv','ts'),csv_period(p/'regime_events.csv','ts')]),'사건 발생 시각 기준')]),
     ]
     result=[]
