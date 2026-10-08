@@ -25,3 +25,5 @@ header .status{position:absolute;left:48px;top:30px;padding:0}@media(max-width:7
 
 /* Four independent laboratories share one resource budget. */
 .research{margin:0 0 30px;padding:24px 0;border-block:1px solid var(--line)}.research .method{padding:14px 0}.research .log-tools{margin-top:20px}#lab-controls{display:flex;gap:12px;flex-wrap:wrap}#lab-status{margin-bottom:0}#lab-result:empty{display:none}.stopped-note{border-block:1px solid var(--line);padding:20px 0;color:var(--accent);font-size:14px}header{min-height:220px;padding-top:56px;padding-bottom:35px}.brand{font-size:clamp(38px,4.8vw,68px);letter-spacing:-.04em}@media(max-width:760px){header{min-height:185px;padding-bottom:28px}.brand{font-size:39px}.research .section-head{margin-top:0}#lab-controls{width:100%}#lab-controls button{flex:1}}
+
+#paper-reference{border-block:1px solid var(--line);padding:12px 0 22px;margin:30px 0}#paper-reference .paper-diamond{fill:var(--accent);stroke:var(--ink);stroke-width:2}#paper-reference .dot{fill:var(--faint)}#paper-reference-result{font-size:14px;line-height:1.8}#paper-reference .method p{max-width:85ch}#paper-reference .section-head{flex-wrap:wrap}

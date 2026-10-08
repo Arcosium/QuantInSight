@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,"><title>QuantInSight</title><link rel="stylesheet" href="/static/style.css?v=20261008-four-labs2"><script src="/static/app.js?v=20261008-four-labs2" defer></script></head>
+<link rel="icon" href="data:,"><title>QuantInSight</title><link rel="stylesheet" href="/static/style.css?v=20261008-paper-reference"><script src="/static/app.js?v=20261008-paper-reference" defer></script></head>
 <body><header><a class="brand" href="/">QuantInSight<span>전략 연구 · 계좌 운용</span></a><div class="status"><span id="lamp"></span><span id="worker-status">연구 상태 확인 중</span></div></header>
 <nav class="tabs" aria-label="시장"><button data-tab="datasets">데이터셋</button><button data-tab="kr" aria-selected="true">한국주식</button><button data-tab="us">미국주식</button><button data-tab="crypto">크립토</button><button data-tab="timefolio">타임폴리오</button><button id="connections-open">계좌 연결</button><button id="logout">로그아웃</button></nav><nav class="subtabs" id="account-subtabs" aria-label="시장 메뉴"></nav><main><section id="connections-panel" hidden><div class="section-head"><h1>계좌 연결</h1><button id="connections-close">닫기</button></div><p class="caption">입력한 연결 정보는 내 계정에서만 사용합니다.</p><form id="connections-form"><h2>한국투자증권 실매매</h2><p class="caption">실매매는 정지 상태입니다. 연결 정보를 저장해도 주문하지 않습니다.</p><div class="controls"><label>App Key<input id="conn-kis-key" type="password" autocomplete="new-password"></label><label>App Secret<input id="conn-kis-secret" type="password" autocomplete="new-password"></label><label>계좌번호 (8자리)<input id="conn-kis-account" inputmode="numeric" maxlength="8"></label><label>상품코드 (2자리)<input id="conn-kis-product" inputmode="numeric" maxlength="2"></label></div><h2>타임폴리오</h2><div class="controls"><label>아이디<input id="conn-timefolio-user" autocomplete="off"></label><label>비밀번호<input id="conn-timefolio-password" type="password" autocomplete="new-password"></label></div><button type="submit">연결 정보 저장</button><p id="connections-result" role="status"></p></form></section><section id="crypto-panel" hidden aria-labelledby="crypto-title">
 <div class="section-head"><h1 id="crypto-title">크립토 페이퍼매매</h1><div class="filters"><label>운용 모델<select id="crypto-model"><option value="cnn">CNN 가중</option><option value="cnn_equal">CNN 기본</option><option value="v2">GBM v2</option><option value="v1">GBM v1</option><option value="v2d">GBM 1d</option></select></label><button id="crypto-refresh">새로고침</button></div></div>
@@ -29,6 +29,14 @@
 <div class="chart-intro"><p>수익률 ↑ · 손실 개월 수 ↓</p><div class="legend"><span class="legend-dot"></span>전체 실험 <span class="legend-line"></span>파레토 경계</div></div>
 <div class="chartbox scatterbox"><svg id="scatter" viewBox="0 0 1120 390" role="img" aria-label="손실 개월 수와 순수익률의 파레토 그래프"></svg><div id="tooltip" hidden></div></div>
 <p class="caption" id="comparison"></p>
+<section id="paper-reference" hidden aria-labelledby="paper-reference-title">
+<div class="section-head"><h2 id="paper-reference-title">논문 전략 비교</h2><a href="/?market=crypto&amp;view=paper">페이퍼매매 보기 ↗</a></div>
+<p id="paper-reference-status" class="caption"></p>
+<div class="chart-intro"><p>관측일 누적 수익률 ↑ · 손실 관측월 수 ↓</p><div class="legend">◆ 논문 CNN 가중 · ● 연구소 전략</div></div>
+<div class="chartbox"><svg id="paper-reference-map" role="img" aria-label="논문과 연구소 전략의 동일 관측일 비교 지도"></svg></div>
+<p id="paper-reference-result"></p>
+<details class="method"><summary>비교 구간과 계산 기준</summary><p id="paper-reference-periods"></p><p>논문: HeatF CNN · 4시간봉 60개 · 10개 시드 앙상블 · 상하위 10% 롱숏 · 14일 보유 · 발생확률 가중 · 왕복 수수료 0.2%, 펀딩비 제외.</p><p>논문 원본의 겹친 날짜는 더 최근에 시작한 검증 구간을 사용합니다. 연구소 전략의 기존 장부에서 같은 날짜의 일수익률만 추출해 복리로 연결합니다. 관측월에는 일부 날짜만 포함된 달도 있습니다. 연구소 전략은 일봉 롱온리이며 비용·유니버스·학습 조건이 다릅니다. 이 비교는 참고용이며, 위 36개월 순위와 유전 알고리즘 선발에는 반영하지 않습니다.</p></details>
+</section>
 <div class="section-head"><div><h2>전략 리더보드</h2></div><div class="filters"><label>전략 검색<input id="search" placeholder="모델·실험 이름" type="search"></label><label>보기<select id="filter"><option value="all">전체 실험</option><option value="pareto">파레토 전략</option><option value="screened">회전율 통과 전략</option></select></label></div></div>
 <p id="table-summary" class="caption"></p><p class="table-hint">표를 좌우로 밀면 모든 항목을 볼 수 있습니다.</p><div class="table-scroll"><table id="leaderboard"><thead><tr><th>전략 / 모델</th><th><button id="sort-return">순수익률 ↓</button></th><th><button id="sort-loss">손실 개월</button></th><th>샤프</th><th>비교 시작일</th><th>검증 상태</th></tr></thead><tbody></tbody></table></div>
 <div class="pagination"><button id="prev">이전</button><span id="page-label"></span><button id="next">다음</button></div>
@@ -44,4 +52,4 @@
 <p class="table-hint">표를 좌우로 밀면 모든 항목을 볼 수 있습니다.</p><div class="table-scroll"><table id="trades"><thead><tr><th>체결일</th><th>신호일</th><th>종목</th><th>구분</th><th>수량</th><th>체결가</th><th>거래 금액</th><th>수수료</th></tr></thead><tbody></tbody></table></div><div class="pagination"><button id="trade-prev">이전</button><span id="trade-page"></span><button id="trade-next">다음</button></div>
 <details class="method"><summary>전략 설정과 검증 범위</summary><dl id="genome"></dl><p id="source-note"></p><p id="limitations"></p></details></section>
 <div id="error" hidden role="alert"></div>
-</main><footer><span>QuantInSight</span><span>전략 연구 · 계좌 운용</span></footer><script src="/static/crypto.js?v=20261008-four-labs2" defer></script></body></html>
+</main><footer><span>QuantInSight</span><span>전략 연구 · 계좌 운용</span></footer><script src="/static/crypto.js?v=20261008-paper-reference" defer></script></body></html>

@@ -55,7 +55,9 @@ def leaderboard(request:Request,cohort: str|None=None,market:str=Query("kr",patt
     points=[{k:v for k,v in r.items() if k not in ['cases','source_digest','limitations','genome']} |
             dict(pareto=r['id'] in front,screened_pareto=r['id'] in valid_front) for r in chosen]
     points.sort(key=lambda r:(-r['net_return'],r['negative_months']))
+    from .paper_benchmark import comparison as paper_comparison
     return dict(cohort=selected,cohorts=cohorts,strategies=points,total=len(all_rows),
+                paper_reference=paper_comparison(chosen) if market=='crypto' else None,
                 frontier=[r['id'] for r in pareto_front(chosen)],
                 screened_frontier=[r['id'] for r in pareto_front(screened)],
                 period_label=((' ~ '.join([chosen[0]['start'],chosen[0]['end']])+' · 최근 36개월') if chosen else '최근 36개월 · 첫 실험 대기'), comparison='최근 36개월',protocol=research.protocol(market))
