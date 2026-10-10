@@ -12,6 +12,9 @@ class Model:
 
 
 def test_paper_never_replays_pre_activation_fills(tmp_path,monkeypatch):
+    from autofolio import config
+    monkeypatch.setattr(config,'RUNS',tmp_path/'runs')
+    monkeypatch.setattr(config,'DATA',tmp_path)
     monkeypatch.setattr(store,'DATA',tmp_path);monkeypatch.setattr(store,'DB',tmp_path/'state.sqlite')
     store.initialize();research.initialize();paper.initialize()
     folder=tmp_path/'deploy';folder.mkdir();artifact=folder/'model.joblib';artifact.write_bytes(b'only-test')
@@ -28,6 +31,13 @@ def test_paper_never_replays_pre_activation_fills(tmp_path,monkeypatch):
         paper.advance(dep)
         with store.connect() as db:book=json.loads(db.execute('SELECT body FROM paper_books').fetchone()[0])
         assert book['pending'] and book['trades']==[]
+        # A same-day replacement must switch the model without duplicate equity.
+        paper.advance(dict(dep,id='replacement'))
+        with store.connect() as db:
+            row=db.execute('SELECT deployment,body FROM paper_books').fetchone()
+        assert row['deployment']=='replacement'
+        assert len(json.loads(row['body'])['equity'])==1
+        dep['id']='replacement'
         # A delayed historical quote on activation day must not backfill an order.
         new=raw.iloc[-1:].copy();new['date']=today-pd.Timedelta(days=2)
         pd.concat([raw,new])[['date','open','high','low','close','volume']].to_parquet(root/'005930.parquet',index=False)

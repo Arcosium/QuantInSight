@@ -133,7 +133,14 @@ def _save_candidates(uid,market,genomes,provider):
 def candidates(uid,market):
     initialize()
     with connect() as db:rows=db.execute('SELECT id,title,definition,provider,created,status,message,evaluation_window FROM alpha_candidates WHERE user_id=? AND market=? ORDER BY created DESC LIMIT 100',(uid,market)).fetchall()
-    return [dict(r,definition=json.loads(r['definition']),evaluation_window=json.loads(r['evaluation_window']) if r['evaluation_window'] else None,progress=training_progress(r['id'])) for r in rows]
+    results=[dict(r,definition=json.loads(r['definition']),evaluation_window=json.loads(r['evaluation_window']) if r['evaluation_window'] else None,progress=training_progress(r['id'])) for r in rows]
+    if any(r['status'] in ('queued','waiting_data') for r in results):
+        current=protocol(market)
+        if not current['ready']:
+            for row in results:
+                if row['status'] in ('queued','waiting_data'):
+                    row.update(status='waiting_data',message=current['message'])
+    return results
 
 
 def candidate_window(row):
@@ -268,7 +275,7 @@ def tick(capacity):
             _DEPLOYMENTS[identity]=spawn(['autofolio.deployment',identity],RUNS/'deployments'/f'{identity}.log');available-=1
     if available and not _PAPER and time.time()-_PAPER_AT>300:
         _PAPER_AT=time.time()
-        with connect() as db:ready=db.execute("SELECT 1 FROM model_deployments WHERE status='ready' AND target IN ('kr-paper','us-paper','crypto-paper') LIMIT 1").fetchone()
+        with connect() as db:ready=db.execute("SELECT 1 FROM model_deployments WHERE status='ready' AND target IN ('kr-paper','us-paper','crypto-paper','timefolio') LIMIT 1").fetchone()
         if ready:
             _PAPER['tick']=spawn(['autofolio.paper'],RUNS/'paper.log');available-=1
     cursor=int(setting('lab_cursor',0))%4

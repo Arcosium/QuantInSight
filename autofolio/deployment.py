@@ -25,8 +25,14 @@ def request_retrain(uid,strategy,target,auto_policy=None):
     try:report=json.loads(source.read_text())
     except (OSError,ValueError):raise ValueError('원본 학습 결과를 읽을 수 없습니다.')
     if not report.get('recipe'):raise ValueError('재학습 명세가 없는 과거 전략입니다. 연구소에서 새로 학습해 주세요.')
-    if target=='timefolio' and not report.get('competition_compliance_verified'):
-        raise ValueError('타임폴리오 대회 규칙 검증 전입니다. 현재 전략은 연구 결과로만 사용할 수 있습니다.')
+    if target=='timefolio':
+        from .contest_validation import report_assessment
+        from .auth import get_connection
+        if not get_connection(uid,'timefolio'):raise ValueError('타임폴리오 계정을 먼저 연결해 주세요.')
+        assessment=report_assessment(report)
+        if assessment['status']=='failed':
+            raise ValueError('타임폴리오 적용 불가: '+assessment['summary'])
+        if not assessment.get('rule_profile'):raise ValueError('13회 규정 원본 확인 실패')
     identity=hashlib.sha256(f'{uid}:{target}:{strategy}:{report["recipe"]["recipe_id"]}'.encode()).hexdigest()[:24]
     now=time.time()
     with connect() as db:
@@ -53,12 +59,13 @@ def run(identity):
     activated=False
     try:
         artifact=retrain(r['source'],dest)
-        message='재학습 완료 · 다음 시세부터 페이퍼 운용' if r['target'] in ('kr-paper','us-paper','crypto-paper') else '재학습 완료 · 새 모델 운용 연결 검증 대기'
+        message='재학습 완료 · 다음 시세부터 페이퍼 운용' if r['target'] in ('kr-paper','us-paper','crypto-paper') else '재학습 완료 · 13회 모의계좌 주문 전 규칙 검사 대기'
         from .auto_apply import activation
         with activation(identity):
             with connect() as db:
                 db.execute("UPDATE model_deployments SET status='ready',artifact=?,updated=?,message=? WHERE id=?",(str(artifact),time.time(),message,identity))
-                db.execute("INSERT INTO strategy_assignments VALUES(?,?,?,?,'paper_ready') ON CONFLICT(user_id,target) DO UPDATE SET strategy_id=excluded.strategy_id,updated=excluded.updated,status='paper_ready'",(r['user_id'],r['target'],r['strategy_id'],time.time()))
+                assignment_status='timefolio_ready' if r['target']=='timefolio' else 'paper_ready'
+                db.execute("INSERT INTO strategy_assignments VALUES(?,?,?,?,?) ON CONFLICT(user_id,target) DO UPDATE SET strategy_id=excluded.strategy_id,updated=excluded.updated,status=excluded.status",(r['user_id'],r['target'],r['strategy_id'],time.time(),assignment_status))
             activated=True
         # Only the selected deployment retains weights; old recipes/results stay.
         with connect() as db:old=db.execute("SELECT id,artifact FROM model_deployments WHERE user_id=? AND target=? AND id!=? AND status='ready'",(r['user_id'],r['target'],identity)).fetchall()

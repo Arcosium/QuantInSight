@@ -68,6 +68,7 @@ def main():
             running=[r for r in running if process_is_job(r['pid'],r['id'])]
         set_setting('heartbeat',dict(timestamp=now,pid=os.getpid(),running=len(running),
                                      available_memory_gb=round(memory_available()/2**30,1)))
+        if importer is not None:importer.poll()  # reap now; the 600 s gate below left it defunct for ten minutes
         if now-last_refresh>600 and (importer is None or importer.poll() is not None):
             with (RUNS/'catalogue.log').open('a') as log:
                 importer=subprocess.Popen([sys.executable,'-c','from autofolio.catalogue import refresh; print(refresh(),flush=True)'],

@@ -11,7 +11,7 @@ from .config import REPORT_ROOTS
 from .metrics import evaluation_scope, ledger, normalized_date, statistics_for
 from .store import connect, event, setting, set_setting
 
-INDEX_VERSION=10
+INDEX_VERSION=12
 
 
 def sha(path):
@@ -146,6 +146,10 @@ def ingest_file(path,stat):
                 turnover_pass=turnover_pass,warm_start=normalized_date(case['daily'][0]['date'])))
         except (ValueError,TypeError,KeyError,ZeroDivisionError):continue
     count=0
+    contest_validation=None
+    if report.get('market','timefolio')=='timefolio':
+        from .contest_validation import report_assessment
+        contest_validation=report_assessment(dict(report,cases=[case for _,case in nodes]))
     source_digest=sha(path)
     verified=proof_status(path)
     with connect() as db:
@@ -170,7 +174,9 @@ def ingest_file(path,stat):
                 rule_screen_pass=all(c['turnover_pass'] is True for c in cases),
                 rule_screen_known=all(c['turnover_pass'] is not None for c in cases),
                 independent_holdout=bool(report.get('independent_holdout',False)) if isinstance(report,dict) else False,
-                contest_certified=bool(report.get('contest_certified',False)) if isinstance(report,dict) else False,
+                contest_certified=bool(contest_validation and contest_validation['competition_compliance_verified']),
+                competition_compliance_verified=bool(contest_validation and contest_validation['competition_compliance_verified']),
+                contest_validation=contest_validation,
                 evaluation_protocol=PROTOCOL,evaluation_window=list(span),performance=splits,
                 selection_scope='os',training_summary=report.get('training_summary'),
                 protocol_origin='native' if report.get('evaluation_protocol')==PROTOCOL else 'retrospective',

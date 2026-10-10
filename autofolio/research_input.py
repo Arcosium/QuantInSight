@@ -128,8 +128,8 @@ def _prepare(market):
         return pq.ParquetFile(snapshot).read(use_threads=False).to_pandas()
     cutoff=min(pd.Timestamp(window()[1]),pd.Timestamp(last_complete_date(market)))
     files = sorted(ROOTS[market].glob('*.parquet'))
-    extended = RUNS/'research_inputs/us_extended_daily'
-    if market == 'us' and extended.exists():
+    extended = RUNS/f'research_inputs/{market}_extended_daily'
+    if extended.exists():
         files = [extended/f.name if (extended/f.name).exists() else f for f in files]
     symbols = [f.stem for f in files]
     common = ['date','symbol',*OHLC,'volume','tradable_buy','tradable_sell',

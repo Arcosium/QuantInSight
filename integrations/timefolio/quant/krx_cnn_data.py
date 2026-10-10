@@ -31,7 +31,7 @@ def atomic_json(path, value):
     os.replace(tmp, path)
 
 
-def fetch(code):
+def fetch(code, *, destination=None):
     r = requests.get("https://fchart.stock.naver.com/sise.nhn", params={"symbol": code,
         "timeframe": "day", "count": "1000", "requestType": "0"}, timeout=20)
     r.raise_for_status()
@@ -44,12 +44,13 @@ def fetch(code):
     d = d[d.index < today]
     if len(d) < 61 or (today-d.index[-1]).days > 7:
         raise ValueError("insufficient_or_stale_bars")
-    DAILY.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=DAILY, suffix=".parquet", delete=False) as f:
+    target = Path(destination) if destination is not None else DAILY/f"{code}.parquet"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=target.parent, suffix=".parquet", delete=False) as f:
         tmp = f.name
     try:
         d.to_parquet(tmp)
-        os.replace(tmp, DAILY/f"{code}.parquet")
+        os.replace(tmp, target)
     finally:
         Path(tmp).unlink(missing_ok=True)
     return str(d.index[-1].date())

@@ -118,6 +118,12 @@ def datasets():
 
 _ACCOUNT_CACHE={}
 
+
+def with_model_status(result,uid):
+    from .timefolio_live import snapshot
+    model=snapshot(uid)
+    return dict(result,model=model,message=result['message']+' · '+model['message'])
+
 @router.get('/api/accounts/{mode}')
 def account(mode: str,request:Request):
     from .auth import user,get_connection
@@ -132,7 +138,7 @@ def account(mode: str,request:Request):
     import hashlib
     key=(person['id'],mode,hashlib.sha256(json.dumps(credential,sort_keys=True).encode()).hexdigest())
     cached=_ACCOUNT_CACHE.get(key)
-    if cached and time.time()-cached[0]<60:return cached[1]
+    if cached and time.time()-cached[0]<60:return with_model_status(cached[1],person['id'])
     try:
         if mode=='timefolio':
             command=[sys.executable,str(ROOT/'autofolio/timefolio_bridge.py')]
@@ -146,4 +152,4 @@ def account(mode: str,request:Request):
         result['updated']=time.time()
     except (subprocess.SubprocessError,OSError,ValueError):result['message']='계좌 조회 실패'
     _ACCOUNT_CACHE[key]=(time.time(),result)
-    return result
+    return with_model_status(result,person['id'])

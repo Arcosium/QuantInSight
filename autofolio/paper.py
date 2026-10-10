@@ -27,6 +27,38 @@ def snapshot(uid,market):
 
 
 def advance(dep):
+    import fcntl
+    from .config import DATA
+    DATA.mkdir(parents=True,exist_ok=True)
+    with (DATA/f"paper-{int(dep['user_id'])}-{dep['target']}.lock").open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        return _advance(dep)
+
+
+def stock_prices(base,market):
+    """Read the refreshed same-provider tail while keeping sealed history."""
+    import pandas as pd
+    import pyarrow.parquet as pq
+    from .research_input import ROOTS,validate_frame
+    from .config import RUNS
+    frames=[]
+    for symbol,old in base.groupby('symbol',sort=False):
+        name=str(symbol).split('@')[0]+'.parquet'
+        extended=RUNS/f'research_inputs/{market}_extended_daily'/name
+        path=extended if extended.exists() else ROOTS[market]/name
+        if not path.exists():frames.append(old);continue
+        try:fresh=validate_frame(pq.ParquetFile(path).read(use_threads=False).to_pandas())
+        except (ValueError,KeyError):frames.append(old);continue
+        overlap=fresh.merge(old[['date','close']],on='date',suffixes=('_n','_o')).tail(20)
+        if overlap.empty or ((overlap.close_n/overlap.close_o-1).abs()>.005).any():frames.append(old);continue
+        newer=fresh[fresh.date>old.date.max()].copy()
+        for k in ['symbol','sector','eligible']:newer[k]=old.iloc[-1][k]
+        newer['tradable_buy']=newer['tradable_sell']=newer.volume.gt(0)
+        frames.extend([old,newer])
+    return pd.concat(frames,ignore_index=True)
+
+
+def _advance(dep):
     """Record a signal now; only a later observed session may fill it.
 
     Initial activation never replays historical trades into live paper equity.
@@ -56,19 +88,7 @@ def advance(dep):
     if market=='crypto':
         prices=crypto_prices(base,local)
     else:
-        frames=[]
-        # Preserve historical adjustment basis; incompatible providers are excluded.
-        for symbol,old in base.groupby('symbol',sort=False):
-            path=ROOTS[market]/(str(symbol).split('@')[0]+'.parquet')
-            if not path.exists():frames.append(old);continue
-            fresh=validate_frame(pq.ParquetFile(path).read(use_threads=False).to_pandas())
-            overlap=fresh.merge(old[['date','close']],on='date',suffixes=('_n','_o')).tail(20)
-            if overlap.empty or ((overlap.close_n/overlap.close_o-1).abs()>.005).any():frames.append(old);continue
-            newer=fresh[fresh.date>old.date.max()].copy()
-            for k in ['symbol','sector','eligible']:newer[k]=old.iloc[-1][k]
-            newer['tradable_buy']=newer['tradable_sell']=newer.volume.gt(0)
-            frames.extend([old,newer])
-        prices=pd.concat(frames,ignore_index=True)
+        prices=stock_prices(base,market)
     cutoff=pd.Timestamp(local.date())
     if market=='crypto' or local.hour<(16 if market=='kr' else 17):cutoff-=pd.Timedelta(days=1)
     prices=prices[prices.date<=cutoff];p,names=features(prices,g,market)
@@ -76,8 +96,9 @@ def advance(dep):
     latest=p.date.max();day=latest.strftime('%Y%m%d')
     with connect() as db:r=db.execute('SELECT body,deployment FROM paper_books WHERE user_id=? AND market=?',(dep['user_id'],market)).fetchone()
     book=json.loads(r['body']) if r else dict(not_before=local.strftime('%Y%m%d'),initial=1e8 if market=='kr' else 1e5,cash=1e8 if market=='kr' else 1e5,nav=1e8 if market=='kr' else 1e5,holdings={},trades=[],equity=[],last_day='',pending=[],rebalance=0)
-    if book['last_day']>=day:return
     same_deployment=bool(r and r['deployment']==dep['id'])
+    if same_deployment and book['last_day']>=day:return
+    if book['last_day']>day:raise ValueError('새 모델의 시세가 현재 장부보다 오래됐습니다.')
     if not same_deployment:
         book['not_before']=local.strftime('%Y%m%d');book['pending']=[];book['rebalance']=0
     if same_deployment:
@@ -124,7 +145,9 @@ def step_book(book,quotes,g,model,names,market,day,same_deployment,execution):
     book['pending']=execution.build_plan(records,g,hold,marks,entries,rebalance)
     book['pending']['sells']=list(dict.fromkeys(unfilled+book['pending']['sells']))
     book['rebalance']=max(0,book['rebalance']-1);book['last_day']=day
-    book['equity'].append(dict(date=day,net_return=book['nav']/book['initial']-1))
+    point=dict(date=day,net_return=book['nav']/book['initial']-1)
+    if book['equity'] and book['equity'][-1]['date']==day:book['equity'][-1]=point
+    else:book['equity'].append(point)
 
 
 def crypto_prices(base,now):
@@ -163,10 +186,18 @@ def run():
     from .deployment import initialize as deployments
     deployments();initialize()
     with connect() as db:rows=db.execute("SELECT d.* FROM model_deployments d JOIN strategy_assignments s ON s.user_id=d.user_id AND s.target=d.target AND s.strategy_id=d.strategy_id WHERE d.status='ready' AND d.target IN ('kr-paper','us-paper','crypto-paper')").fetchall()
+    from .refresh_research_data import refresh
+    from .research_input import status
+    for market in {r['target'].split('-')[0] for r in rows if r['target'] in ('kr-paper','us-paper')}:
+        if not status(market)['ready']:
+            try:refresh(market)
+            except (ValueError,OSError):pass  # Closed-session tail remains usable.
     for row in rows:
         try:advance(dict(row))
         except Exception as exc:
             from .store import event
             event('paper_failed',dict(message=str(exc)[:200],market=row['target'].split('-')[0]))
+    from .timefolio_live import run as timefolio_run
+    timefolio_run()
 
 if __name__=='__main__':run()

@@ -6,6 +6,24 @@ import pytest
 from autofolio import map_references as m
 
 
+def test_timefolio_diamond_requires_connected_current_model(monkeypatch,tmp_path):
+    path=tmp_path/'store.sqlite3';monkeypatch.setattr(m.config,'DB',path)
+    with sqlite3.connect(path) as db:
+        db.executescript('''CREATE TABLE strategy_assignments(user_id,target,strategy_id,status);
+          CREATE TABLE model_deployments(id,user_id,target,strategy_id,status);
+          CREATE TABLE paper_books(user_id,market,deployment);
+          CREATE TABLE timefolio_model_state(user_id,body);
+          CREATE TABLE strategies(id,payload);
+          INSERT INTO strategy_assignments VALUES(1,'timefolio','s','timefolio_ready');
+          INSERT INTO model_deployments VALUES('d',1,'timefolio','s','ready');
+          INSERT INTO strategies VALUES('s','{}');''')
+        db.execute('INSERT INTO timefolio_model_state VALUES(1,?)',(json.dumps(dict(deployment='other',connected=True)),))
+    assert m._assignments({'id':1},[{'id':'s'}])=={}
+    with sqlite3.connect(path) as db:db.execute('UPDATE timefolio_model_state SET body=?',(json.dumps(dict(deployment='d',connected=True)),))
+    assert m._assignments({'id':1},[{'id':'s'}])=={'s':['timefolio']}
+    assert m._assignments({'id':2},[{'id':'s'}])=={}
+
+
 def test_fold_overlap_and_gaps_remain_explicit(tmp_path):
     folds = [{'2025-01-01': 1, '2025-01-02': 1.1, '2025-01-03': 1.21},
              {'2025-01-02': 1, '2025-01-03': .9},

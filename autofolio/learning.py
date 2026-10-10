@@ -212,21 +212,11 @@ def timefolio_headroom(cash,hold,marks,book,symbol,buy_cost):
 
 
 def timefolio_assessment(case):
-    import pandas as pd
-    d=pd.DataFrame(case['daily']);d['date']=pd.to_datetime(d.date)
-    d['week']=d.date.dt.to_period('W')
-    trades=pd.DataFrame(case['trades'])
-    if trades.empty:d['traded']=0.
-    else:
-        trades['date']=pd.to_datetime(trades.date);trades['value']=trades.qty*trades.price
-        d['traded']=d.date.map(trades.groupby('date').value.sum()).fillna(0.)
-    weekly=d.groupby('week').agg(nav=('nav','mean'),traded=('traded','sum'),days=('date','size'))
-    weekly['turnover']=.5*weekly.traded/weekly.nav
-    full=weekly.iloc[1:-1];low=int(full.turnover.lt(.05).sum())
-    return dict(profile='conservative_contest_proxy',sector_cap=.1,unknown_sector_policy='shared UNKNOWN sector',unknown_size_policy='all treated as small-cap',small_cap_total=.3,max_gross=.8,buy_fee=.001,sell_fee=.003,slippage_proxy=.0005,
-                min_weekly_turnover=.05,low_turnover_weeks=low,four_week_turnover_stop=low>=4,
-                historical_designations_verified=False,competition_compliance_verified=False,
-                weekly=[dict(week=str(i),turnover=float(row.turnover),days=int(row.days)) for i,row in weekly.iterrows()])
+    # A three-year count of low-turnover weeks is not one contest's violation
+    # count. The shared validator restricts the check to the actual edition.
+    from .contest_validation import assess
+    from .contest_rules_evidence import profile
+    return assess(case,rules=profile())
 
 
 def evaluate(candidate,destination):
@@ -287,7 +277,11 @@ def _evaluate(candidate,destination):
       cases=[case],no_broker_orders=True,independent_holdout=False,weights_retained=False,competition_compliance_verified=False,
       limitations=['IS 24개월 · OS 9개월 선발 · ROS 3개월은 탐색·선발에 미사용','OS는 반복 탐색용이며 독립 검증 아님; ROS도 과거 노출 가능성이 있어 독립 인증하지 않음',
         '현재 보유 데이터 유니버스의 생존·수집 선택 편향','기업행사·상장폐지·체결·대회 세부 규칙 미감사','롱 전용; 뉴스는 충분한 시점 정렬 이력이 확보된 경우만 사용',f'가격 누락 보유 종목을 마지막 종가로 평가한 종목일 {stale}회'],metrics=metrics)
-    if market=='timefolio':report['contest_constraints']=timefolio_assessment(case)
+    if market=='timefolio':
+        from .contest_validation import report_assessment
+        report['contest_validation']=report_assessment(report)
+        report['contest_constraints']=report['contest_validation']
+        report['competition_compliance_verified']=report['contest_validation']['competition_compliance_verified']
     (destination/'recipe.json').write_text(json.dumps(recipe,ensure_ascii=False,allow_nan=False,indent=2))
     path=destination/'review.json';path.write_text(json.dumps(report,ensure_ascii=False,allow_nan=False));progress(dict(phase='completed',**report['training_summary']));_PROGRESS=None;return path
 

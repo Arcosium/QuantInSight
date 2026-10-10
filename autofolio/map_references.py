@@ -112,6 +112,16 @@ def _crypto_points(bucket):
     return points
 
 
+def _timefolio_assignments(db,uid):
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='timefolio_model_state'").fetchone():return []
+    return db.execute('''SELECT a.strategy_id,a.target,s.payload FROM strategy_assignments a
+        JOIN model_deployments d ON d.user_id=a.user_id AND d.target=a.target AND d.strategy_id=a.strategy_id AND d.status='ready'
+        JOIN timefolio_model_state t ON t.user_id=a.user_id AND json_extract(t.body,'$.deployment')=d.id
+        JOIN strategies s ON s.id=a.strategy_id
+        WHERE a.user_id=? AND a.target='timefolio' AND a.status='timefolio_ready'
+          AND json_extract(t.body,'$.connected')=1''',(uid,)).fetchall()
+
+
 def _assignments(person, visible_rows):
     """An assigned ID alone is insufficient: require its current, ready paper book."""
     allowed = {row['id'] for row in visible_rows if row.get('owner_id') in (None, person['id'])}
@@ -126,6 +136,7 @@ def _assignments(person, visible_rows):
                   AND a.target=p.market || '-paper'
                 WHERE a.user_id=? AND a.status IN ('paper_ready','paper_active')
                   AND a.target IN ('kr-paper','us-paper','crypto-paper')''', (person['id'],)).fetchall()
+            rows.extend((identity,target) for identity,target,_ in _timefolio_assignments(db,person['id']))
         for identity, target in rows:
             if identity in allowed and target not in result.setdefault(identity, []):
                 result[identity].append(target)
@@ -149,6 +160,7 @@ def _outside_points(market, person, visible_rows):
                 JOIN strategies s ON s.id=a.strategy_id
                 WHERE a.user_id=? AND p.market=? AND a.status IN ('paper_ready','paper_active')
                   AND a.target IN ('kr-paper','us-paper','crypto-paper')''', (person['id'], market)).fetchall()
+            if market=='timefolio':rows.extend(_timefolio_assignments(db,person['id']))
         for identity, target, payload in rows:
             if identity in visible:
                 continue

@@ -15,7 +15,7 @@ from .evaluation import selection_metrics
 
 router = APIRouter()
 TARGETS = {'kr': 'kr-paper', 'us': 'us-paper', 'crypto': 'crypto-paper', 'timefolio': 'timefolio'}
-LABELS = {'kr': '한국주식 페이퍼매매', 'us': '미국주식 페이퍼매매', 'crypto': '크립토 페이퍼매매'}
+LABELS = {'kr': '한국주식 페이퍼매매', 'us': '미국주식 페이퍼매매', 'crypto': '크립토 페이퍼매매', 'timefolio':'타임폴리오 13회 모의매매'}
 
 
 def initialize():
@@ -44,6 +44,9 @@ def eligible(person, market, candidates=None):
     for r in (rows() if candidates is None else candidates):
         if not research.visible(r,person,market) or not accepts(r):continue
         if (r.get('genome') or {}).get('engine')!='learned_v1':continue
+        if market=='timefolio':
+            assessment=r.get('contest_validation') or {}
+            if assessment.get('status') not in ('missing','passed') or not assessment.get('rule_profile'):continue
         metrics=selection_metrics(r)
         if metrics is not None:
             selected.append(dict(r,net_return=metrics['net_return'],negative_months=metrics['negative_months']))
@@ -56,9 +59,12 @@ def state(uid, market):
     initialize()
     with store.connect() as db:
         policy = db.execute('SELECT * FROM auto_apply_policies WHERE user_id=? AND market=?', (uid, market)).fetchone()
-    available = market != 'timefolio'
+    from .auth import get_connection
+    available = market != 'timefolio' or bool(get_connection(uid,'timefolio'))
     message = (f'{LABELS.get(market)} · 켠 이후의 새 OS 9개월 파레토 후보 중 수익률 최대, 동률이면 손실월 최소 · 재학습 검증 후 전환'
-               if available else '타임폴리오 13회 운용 모델 연결·대회 규칙 검증 전입니다. 자동 적용은 잠겨 있습니다.')
+               if available else '타임폴리오 계정을 먼저 연결해 주세요.')
+    if market=='timefolio' and available:
+        message+=' · 과거 대회 적합성 인증과 별개로 실제 주문마다 13회 규칙 확인'
     if market == 'kr':
         message += ' · 한투 실매매 정지 유지'
     return dict(enabled=bool(policy and policy['enabled']), available=available, target=TARGETS[market],
@@ -146,6 +152,7 @@ def tick():
             fresh = sorted((r for r in front if r['id'] not in seen),
                            key=lambda r: (-r['net_return'], r['negative_months'], r['id']))
             message = policy['message']
+            retry=set()
             if fresh:
                 chosen = fresh[0]
                 try:
@@ -153,7 +160,8 @@ def tick():
                     message = f"새 파레토 전략 재학습 요청 · {chosen['title']}"
                 except ValueError as exc:
                     message = f'자동 적용 보류 · {exc}'[:250]
+                    retry.add(chosen['id'])
                 store.event('auto_apply', dict(user_id=uid, market=market, strategy=chosen['id'], message=message))
             with store.connect() as db:
                 db.execute('UPDATE auto_apply_policies SET seen=?,updated=?,message=? WHERE user_id=? AND market=?',
-                           (json.dumps([r['id'] for r in candidates]), time.time(), message, uid, market))
+                           (json.dumps([r['id'] for r in candidates if r['id'] not in retry]), time.time(), message, uid, market))

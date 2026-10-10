@@ -36,8 +36,19 @@ def targets(identity:str,request:Request):
     except (KeyError,ValueError):raise HTTPException(404,'전략을 찾을 수 없습니다.')
     if not research.visible(summary,person):raise HTTPException(404)
     market=summary.get('market','timefolio')
-    return dict(targets=[dict(id=k,label=label+(' · 규칙 검증 대기' if k=='timefolio' and not summary.get('contest_certified') else ''),available=k!='kis-live' and (k!='timefolio' or (summary.get('contest_certified',False) and bool(get_connection(person['id'],k)))))
-                         for k,(m,label) in TARGETS.items() if m==market])
+    options=[]
+    for key,(target_market,label) in TARGETS.items():
+        if target_market!=market:continue
+        reason='';available=key!='kis-live'
+        if key=='kis-live':reason='실매매 정지 상태입니다.'
+        if key=='timefolio':
+            assessment=summary.get('contest_validation') or {}
+            available=bool(get_connection(person['id'],key)) and assessment.get('status')=='missing' and bool(assessment.get('rule_profile'))
+            if not get_connection(person['id'],key):reason='타임폴리오 계정을 먼저 연결해 주세요.'
+            elif not available:reason=assessment.get('summary') or '원장·13회 규칙 검사 필요'
+            else:reason='과거 대회 인증 미완료 · 재학습 후 실제 주문마다 13회 규칙 검사'
+        options.append(dict(id=key,label=label,available=available,reason=reason))
+    return dict(targets=options)
 
 class Apply(BaseModel):
     target:str
@@ -47,7 +58,9 @@ def apply(identity:str,value:Apply,request:Request):
     mutation_guard(request);person=user(request)
     if value.target=='kis-live':raise HTTPException(409,'실매매 정지 상태입니다. 전략을 적용할 수 없습니다.')
     options=targets(identity,request)['targets']
-    if not any(t['id']==value.target and t['available'] for t in options):raise HTTPException(403,'이 계좌에 적용할 권한이 없습니다.')
+    selected=next((t for t in options if t['id']==value.target),None)
+    if selected is None:raise HTTPException(403,'이 전략의 적용 대상이 아닙니다.')
+    if not selected['available']:raise HTTPException(409,selected['reason'] or '현재 적용할 수 없는 계좌입니다.')
     summary,_=strategy_case(identity)
     if not accepts(summary):raise HTTPException(409,'최근 36개월 평가를 통과한 전략만 적용할 수 있습니다.')
     from .deployment import request_retrain

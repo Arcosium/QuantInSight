@@ -113,3 +113,20 @@ def test_automatic_policy_endpoints_require_authentication():
     client=TestClient(app)
     assert client.get('/api/research/kr/auto-apply').status_code==401
     assert client.post('/api/research/kr/auto-apply',json={'enabled':True}).status_code in (401,403)
+
+
+def test_timefolio_policy_requires_own_connection(setup,monkeypatch):
+    monkeypatch.setattr(auth,'get_connection',lambda uid,kind: {'configured':True} if uid==1 else None)
+    assert a.configure({'id':1},'timefolio',True)['enabled']
+    with pytest.raises(HTTPException):a.configure({'id':2},'timefolio',True)
+
+
+def test_transient_queue_failure_does_not_consume_candidate(setup,monkeypatch):
+    a.configure({'id':1},'kr',True);setup('new',.2,4)
+    original=deployment.request_retrain
+    def unavailable(*args,**kwargs):raise ValueError('temporary unavailable')
+    monkeypatch.setattr(deployment,'request_retrain',unavailable);a.tick()
+    with store.connect() as db:
+        assert 'new' not in json.loads(db.execute('SELECT seen FROM auto_apply_policies').fetchone()[0])
+    monkeypatch.setattr(deployment,'request_retrain',original);a.tick()
+    with store.connect() as db:assert db.execute('SELECT strategy_id FROM model_deployments').fetchone()[0]=='new'
